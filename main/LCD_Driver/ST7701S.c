@@ -499,7 +499,7 @@ void LCD_Init(void)
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Backlight program
 
-uint8_t LCD_Backlight = 80;
+uint8_t LCD_Backlight = 100;
 static ledc_channel_config_t ledc_channel;
 void Backlight_Init(void)
 {
@@ -527,7 +527,7 @@ void Backlight_Init(void)
     ledc_channel_config(&ledc_channel);
     ledc_fade_func_install(0);
     
-    Set_Backlight(LCD_Backlight);      //0~100    
+    // Set_Backlight(LCD_Backlight);      //0~100    
 }
 void Set_Backlight(uint8_t Light)
 {   

@@ -21,7 +21,7 @@ lv_obj_t *ui____initial_actions0;
 
 ///////////////////// SCREENS ////////////////////
 void boot_starter(){
-    lv_scr_load_anim(ui_Screen1, LV_SCR_LOAD_ANIM_FADE_ON, 500, 3000, false);
+    lv_scr_load_anim(ui_Screen1, LV_SCR_LOAD_ANIM_FADE_ON, 100, 1000, false);
 }
 void ui_init( void ){
     lv_disp_t *dispp = lv_disp_get_default();
@@ -30,10 +30,10 @@ void ui_init( void ){
     ui_Screen1_screen_init();
     ui____initial_actions0 = lv_obj_create(NULL);
 
-    boot_screen_create();
-    lv_obj_add_event_cb(boot_screen, boot_starter, LV_EVENT_SCREEN_LOADED, NULL);
-    boot_start();
-    // lv_disp_load_scr( ui_Screen1);
+    // boot_screen_create();
+    // lv_obj_add_event_cb(boot_screen, boot_starter, LV_EVENT_SCREEN_LOADED, NULL);
+    // boot_start();
+    lv_disp_load_scr( ui_Screen1);
 }
 
 void ui_destroy( void ){

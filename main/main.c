@@ -10,23 +10,158 @@
 #include "boot/boot_screen.h"
 #include "ui/screens/ui_Screen1.h"
 #include "ui/ui.h"
-#include "ui/ui.h"
-
-int coolant_temp = 100;
-int oil_temp = 142; 
-int oil_pressure = 2; 
-int fuel_pressure = 34; 
-float fuel_level = 100.0f;       
-bool coolant_temp_increasing = true; 
-bool oil_temp_increasing = true; 
-bool oil_pressure_increasing = true;  
-bool fuel_pressure_increasing = true;
-bool fuel_level_increasing = true;
+#include "driver/uart.h"
+#include "esp_log.h"
+#include <string.h>
+#include <stdint.h>
 
 static lv_color_t green_color;
 static lv_color_t red_color;
-static lv_color_t blue_color;
 static lv_color_t orange_color;
+static lv_color_t purple_color;
+static lv_color_t pink_color;
+static lv_color_t blue_color;
+
+#define UART_PORT      UART_NUM_1
+#define UART_RX_PIN    44
+#define UART_BAUD      2000000
+
+#define ENABLE_LOGGING 0
+
+#define SOF_BYTE       0xA5
+#define PKT_LEN        26
+
+static const char *TAG = "RX";
+
+typedef struct __attribute__((packed)) {
+    uint16_t oil_temp;      
+    uint16_t water_temp;    
+    uint16_t oil_pressure;  
+    uint16_t fuel_pressure; 
+    uint16_t fuel_level;   
+    uint16_t afr;         
+    int16_t boost;          
+    uint32_t lap_time_ms;    
+    int32_t  lap_delta_ms; 
+} gauge_payload_t;
+
+
+static int g_water_temp = 100;
+static int g_oil_temp = 142;
+static int g_oil_pressure = 2;
+static int g_fuel_pressure = 34;
+static int g_fuel_level = 50.0;
+
+static uint16_t crc16_ccitt(const uint8_t *data, uint16_t len){
+    uint16_t crc = 0xFFFF;
+    for (int i = 0; i < len; i++) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (int j = 0; j < 8; j++)
+            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : (crc << 1);
+    }
+    return crc;
+}
+
+
+
+
+static void uart_init(void)
+{
+    uart_config_t cfg = {
+        .baud_rate = UART_BAUD,
+        .data_bits = UART_DATA_8_BITS,
+        .parity    = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT
+    };
+
+    ESP_ERROR_CHECK(uart_param_config(UART_PORT, &cfg));
+
+    ESP_ERROR_CHECK(uart_set_pin(
+        UART_PORT,
+        UART_PIN_NO_CHANGE,
+        UART_RX_PIN,
+        UART_PIN_NO_CHANGE,
+        UART_PIN_NO_CHANGE
+    ));
+
+    ESP_ERROR_CHECK(uart_driver_install(
+        UART_PORT,
+        4096,   // RX buffer (bigger)
+        0,
+        0,
+        NULL,
+        0
+    ));
+}
+
+
+void update_gauge_label(lv_obj_t *label, float value)
+{
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%.2f", value);
+    lv_label_set_text(label, buf);
+}
+
+static void uart_rx_task(void *arg){
+    uint8_t buf[PKT_LEN];
+    int idx = 0;
+
+    while (1) {
+        uint8_t byte;
+        if (uart_read_bytes(UART_PORT, &byte, 1, portMAX_DELAY) != 1)
+            continue;
+
+        // sync on SOF
+        if (idx == 0 && byte != SOF_BYTE)
+            continue;
+
+        buf[idx++] = byte;
+
+        if (idx == PKT_LEN) {
+            idx = 0;
+
+            uint16_t rx_crc = buf[PKT_LEN - 2] | (buf[PKT_LEN - 1] << 8);
+
+            uint16_t calc_crc = crc16_ccitt(&buf[1], PKT_LEN - 3);
+
+            if (rx_crc != calc_crc) {
+                ESP_LOGW(TAG, "CRC fail");
+                continue;
+            }
+
+            gauge_payload_t p;
+            memcpy(&p, &buf[2], sizeof(p));
+
+            float afr = p.afr * 0.1f; 
+            float boost = p.boost * 0.1f;
+            float water_temp = p.water_temp *0.1f;
+            float oil_temp = p.oil_temp *0.1f;
+            float oil_pressure = p.oil_pressure *0.1f;
+            float fuel_pressure = p.fuel_pressure *0.1f;
+            float fuel_level = p.fuel_level *0.1f;
+
+            g_water_temp = (int)water_temp;
+            g_oil_temp = (int)oil_temp;
+            g_oil_pressure = (int)oil_pressure;
+            g_fuel_pressure = (int)fuel_pressure;
+            g_fuel_level = (int)fuel_level;
+
+            #if ENABLE_LOGGING
+            ESP_LOGI(TAG,
+                "Oil %.1fC Water %.1fC AFR %.2f Boost %.1fkPa",
+                p->oil_temp / 10.0f,
+                p->water_temp / 10.0f,
+                p->afr / 10.0f,
+                p->boost / 10.0f
+            );
+            #endif
+        }
+    }
+}
+
+
 
 
 static inline int map_int(int x,
@@ -46,15 +181,19 @@ static inline int constrain_int(int x, int low, int high){
 
 static void init_label_styles(void){
 
-    blue_color = lv_palette_main(LV_PALETTE_BLUE);
-    green_color = lv_palette_main(LV_PALETTE_GREEN);
-    red_color = lv_palette_main(LV_PALETTE_RED);
+    blue_color = lv_palette_main(LV_PALETTE_CYAN);
+    green_color = lv_color_hex(0x28FF00);
+    red_color = lv_palette_main(LV_PALETTE_PINK);
     orange_color = lv_palette_main(LV_PALETTE_DEEP_ORANGE);
+    purple_color = lv_palette_main(LV_PALETTE_PURPLE);
+    pink_color = lv_palette_main(LV_PALETTE_PINK);
 }
 
 static void update_label_if_needed(lv_obj_t *label, int new_value, lv_color_t new_color) {
+    if (!label) return;  // safety check
+
     char buf[12];
-    sprintf(buf, "%d", new_value);
+    snprintf(buf, sizeof(buf), "%d", new_value);
 
     // Only update text if changed
     const char *old_text = lv_label_get_text(label);
@@ -63,78 +202,51 @@ static void update_label_if_needed(lv_obj_t *label, int new_value, lv_color_t ne
     }
 
     // Only update color if changed
-    lv_color_t old_color = lv_obj_get_style_text_color(label, LV_PART_MAIN);
+    lv_color_t old_color = lv_obj_get_style_text_color(label, LV_PART_MAIN | LV_STATE_DEFAULT);
     if (old_color.full != new_color.full) {
-        lv_obj_set_style_text_color(label, new_color, LV_PART_MAIN);
+        lv_obj_set_style_text_color(label, new_color, LV_PART_MAIN | LV_STATE_DEFAULT);
     }
+}
+
+void update_gauge_values(){
+    lv_color_t water_temp_color = green_color;
+    lv_color_t oil_temp_color = green_color;
+    lv_color_t oil_pressure_color = green_color;
+    lv_color_t fuel_pressure_color = green_color;
+
+    fuel_pressure_color = (g_fuel_pressure > 70 || g_fuel_pressure < 30) ? red_color : green_color;
+    water_temp_color = (g_water_temp < 150) ? blue_color : ((g_water_temp > 205) ? red_color : green_color);
+    oil_temp_color = (g_oil_temp < 150) ? blue_color : ((g_oil_temp > 220) ? red_color : green_color);
+    oil_pressure_color = (g_oil_pressure > 125 || g_oil_pressure < 25) ? red_color : green_color;
+
+    update_label_if_needed(ui_Label5, g_water_temp, water_temp_color);
+    update_label_if_needed(ui_Label6, g_fuel_pressure, fuel_pressure_color);
+    update_label_if_needed(ui_Label7, g_oil_temp, oil_temp_color);
+    update_label_if_needed(ui_Label8, g_oil_pressure, oil_pressure_color);
 
 }
 
-void simulate_guage_movement(int gauge_value, int max_value, int min_value, int step, lv_obj_t * text, const char * type, bool isIncreasing){
-    
-    gauge_value += (isIncreasing ? step : -step);
-    lv_color_t color = green_color;
-    
-    if (gauge_value >= max_value || gauge_value <= min_value){
-        isIncreasing = !isIncreasing;
-        gauge_value = constrain_int(gauge_value, 0, max_value);
+void update_fuel_arc(){
+
+    // Update for fuel gauge color, slows down FPS a little
+    lv_color_t new_color = green_color;
+    new_color = (g_fuel_level < 20) ? red_color : ((g_fuel_level < 35) ? orange_color : green_color) ;
+
+    // Only update color if changed
+    lv_color_t old_color = lv_obj_get_style_arc_color(fuel_arc, LV_PART_INDICATOR);
+    if (old_color.full != new_color.full) {
+        lv_obj_set_style_arc_color(fuel_arc, new_color, LV_PART_INDICATOR);
     }
-    if(strcmp(type, "fuel_pressure") == 0) {
-        fuel_pressure = gauge_value;
-        fuel_pressure_increasing = isIncreasing;
-        color = (gauge_value > 70 || gauge_value < 30) ? red_color : green_color;
-    } else if(strcmp(type, "coolant_temp") == 0) {
-        coolant_temp = gauge_value;
-        coolant_temp_increasing = isIncreasing;
-        color = (gauge_value < 150) ? blue_color : ((gauge_value > 205) ? red_color : green_color);
-    } else if(strcmp(type, "oil_temp") == 0) {
-        oil_temp = gauge_value;
-        oil_temp_increasing = isIncreasing;;
-        color = (gauge_value < 150) ? blue_color : ((gauge_value > 220) ? red_color : green_color);
-    } else if(strcmp(type, "oil_pressure") == 0) {
-        oil_pressure = gauge_value;
-        oil_pressure_increasing = isIncreasing;
-        color = (gauge_value > 125 || gauge_value < 25) ? red_color : green_color;
-    } 
 
-    update_label_if_needed(text, gauge_value, color);
-}
-
-void simulate_fuel_arc(float *fuel_value, lv_obj_t *arc){
-    const float step_per_second = 1.0f;
-
-    static bool increasing = true;
-
-    //Update for fuel gauge color, slows down FPS a little
-    // lv_color_t new_color = green_color;
-    // new_color = (*fuel_value < 20) ? red_color : ((*fuel_value < 35) ? orange_color : green_color) ;
-
-    // // Only update color if changed
-    // lv_color_t old_color = lv_obj_get_style_arc_color(arc, LV_PART_INDICATOR);
-    // if (old_color.full != new_color.full) {
-    //     lv_obj_set_style_arc_color(fuel_arc, new_color, LV_PART_INDICATOR);
-    // }
-
-    // update fuel
-    if(increasing) *fuel_value += step_per_second;
-    else          *fuel_value -= step_per_second;
-
-    // reverse at bounds
-    if(*fuel_value >= 100.0f) increasing = false;
-    if(*fuel_value <= 0.0f)   increasing = true;
-
-    lv_arc_set_value(arc, (int)*fuel_value);
+    lv_arc_set_value(fuel_arc, g_fuel_level);
 }
 
 void gauge_timer(lv_timer_t * t) {
-    simulate_guage_movement(coolant_temp, 250, 100, 4, ui_Label5, "coolant_temp", coolant_temp_increasing);
-    simulate_guage_movement(fuel_pressure, 100, 0, 2, ui_Label6, "fuel_pressure", fuel_pressure_increasing);
-    simulate_guage_movement(oil_temp, 250, 100, 5, ui_Label7, "oil_temp", oil_temp_increasing);
-    simulate_guage_movement(oil_pressure, 150, 0, 3, ui_Label8, "oil_pressure", oil_pressure_increasing);
+    update_gauge_values();
 }
 
 void arc_timer(lv_timer_t * t){
-    simulate_fuel_arc(&fuel_level, fuel_arc);
+    update_fuel_arc();
 }
 
 
@@ -145,9 +257,25 @@ void app_main(void){
     Touch_Init();
     LVGL_Init();
 
-    lv_init();
-    ui_init();
     init_label_styles();
-    lv_timer_create(gauge_timer, 200, NULL);
-    lv_timer_create(arc_timer, 100, NULL);
+    
+    ui_init();
+
+    uart_init();
+
+    xTaskCreate(
+        uart_rx_task,
+        "uart_rx",
+        4096,
+        NULL,
+        10,
+        NULL
+    );
+
+    lv_timer_create(gauge_timer, 100, NULL);
+    lv_timer_create(arc_timer, 1000, NULL);
+
+    Set_Backlight(0); 
+    vTaskDelay(pdMS_TO_TICKS(750)); 
+    Set_Backlight(100);
 }
