@@ -6,7 +6,7 @@
 #include "../ui.h"
 #include "lvgl.h"
 
-lv_obj_t *ui_Screen1 = NULL;lv_obj_t *ui_Label1 = NULL;lv_obj_t *ui_Label2 = NULL;lv_obj_t *ui_Label3 = NULL;lv_obj_t *ui_Label4 = NULL;lv_obj_t *ui_Label5 = NULL;lv_obj_t *ui_Label6 = NULL;lv_obj_t *ui_Label7 = NULL;lv_obj_t *ui_Label8 = NULL;lv_obj_t *fuel_arc = NULL;lv_obj_t *ui_Image1 = NULL;
+lv_obj_t *ui_Screen1 = NULL;lv_obj_t *ui_Label1 = NULL;lv_obj_t *ui_Label2 = NULL;lv_obj_t *ui_Label3 = NULL;lv_obj_t *ui_Label4 = NULL;lv_obj_t *ui_Label5 = NULL;lv_obj_t *ui_Label6 = NULL;lv_obj_t *ui_Label7 = NULL;lv_obj_t *ui_Label8 = NULL;lv_obj_t *fuel_arc = NULL;lv_obj_t *low_gas_img = NULL;
 
 void ui_Screen1_screen_init(void)
 {
@@ -120,6 +120,14 @@ void ui_Screen1_screen_init(void)
    lv_obj_set_style_arc_width(fuel_arc, 20, LV_PART_MAIN);
    lv_obj_set_style_arc_width(fuel_arc, 20, LV_PART_INDICATOR);
    lv_obj_remove_style(fuel_arc, NULL, LV_PART_KNOB);
+
+   /* Low fuel icon */
+   low_gas_img = lv_img_create(ui_Screen1);
+   lv_img_set_src(low_gas_img, &low_gas_icon_no_bg);
+   lv_obj_set_x( low_gas_img, 215);
+   lv_obj_set_y( low_gas_img, 30);
+   lv_obj_set_style_bg_opa(low_gas_img, LV_OPA_TRANSP, LV_PART_MAIN);
+   lv_obj_add_flag(low_gas_img, LV_OBJ_FLAG_HIDDEN);
 }
 
 void ui_Screen1_screen_destroy(void)
@@ -136,5 +144,6 @@ ui_Label5= NULL;
 ui_Label6= NULL;
 ui_Label7= NULL;
 ui_Label8= NULL;
+low_gas_img= NULL;
 
 }

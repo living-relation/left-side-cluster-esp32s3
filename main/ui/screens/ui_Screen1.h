@@ -23,7 +23,7 @@ extern lv_obj_t *ui_Label6;
 extern lv_obj_t *ui_Label7;
 extern lv_obj_t *ui_Label8;
 extern lv_obj_t *fuel_arc;
-extern lv_obj_t *ui_Image1;
+extern lv_obj_t *low_gas_img;
 // CUSTOM VARIABLES
 
 #ifdef __cplusplus

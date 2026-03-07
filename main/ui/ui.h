@@ -9,8 +9,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-    #include "lvgl.h"
-
+    
+#include "lvgl.h"
 #include "ui_helpers.h"
 #include "ui_events.h"
 
@@ -19,13 +19,14 @@ extern "C" {
 
 ///////////////////// VARIABLES ////////////////////
 
-// extern const lv_img_dsc_t ui_img_sti_logo_png;
+extern const lv_img_dsc_t ui_img_sti_logo_png;
 
 // EVENTS
 extern lv_obj_t *ui____initial_actions0;
 
 
-LV_IMG_DECLARE( ui_black_boot_png);
+LV_IMG_DECLARE( ui_black_boot_png );
+LV_IMG_DECLARE( low_gas_icon_no_bg ); 
 // UI INIT
 void ui_init(void);
 void ui_destroy(void);

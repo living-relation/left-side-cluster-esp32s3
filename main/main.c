@@ -22,6 +22,8 @@ static lv_color_t purple_color;
 static lv_color_t pink_color;
 static lv_color_t blue_color;
 
+static bool low_fuel_blink_state = false;
+
 #define UART_PORT      UART_NUM_1
 #define UART_RX_PIN    44
 #define UART_BAUD      2000000
@@ -238,7 +240,29 @@ void update_fuel_arc(){
         lv_obj_set_style_arc_color(fuel_arc, new_color, LV_PART_INDICATOR);
     }
 
+    if (g_fuel_level < 15) {
+        //Blinking handled in low_fuel_blink_timer
+    } else if (g_fuel_level < 20) {
+        lv_obj_clear_flag(low_gas_img, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(low_gas_img, LV_OBJ_FLAG_HIDDEN);
+    }
+
     lv_arc_set_value(fuel_arc, g_fuel_level);
+}
+
+void low_fuel_blink_timer(lv_timer_t * t) {
+    if (g_fuel_level >= 15) {
+        return;
+    }
+
+    low_fuel_blink_state = !low_fuel_blink_state;
+
+    if (low_fuel_blink_state) {
+        lv_obj_clear_flag(low_gas_img, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(low_gas_img, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 void gauge_timer(lv_timer_t * t) {
@@ -274,6 +298,7 @@ void app_main(void){
 
     lv_timer_create(gauge_timer, 100, NULL);
     lv_timer_create(arc_timer, 1000, NULL);
+    lv_timer_create(low_fuel_blink_timer, 400, NULL);
 
     Set_Backlight(0); 
     vTaskDelay(pdMS_TO_TICKS(750)); 

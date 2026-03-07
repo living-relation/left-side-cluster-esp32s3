@@ -14,6 +14,7 @@ idf_component_register(
             "ui/fonts/Doto_Extra_Bold_84.c"
             "ui/fonts/Schoolbell_24.c"
             "ui/images/ui_black_boot_png.c"
+            "ui/images/low_gas_icon_no_bg.c"
             "ui/boot/boot_screen.c"
 
       INCLUDE_DIRS 
