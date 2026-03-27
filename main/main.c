@@ -14,6 +14,7 @@
 #include "esp_log.h"
 #include <string.h>
 #include <stdint.h>
+#include <math.h>
 
 static lv_color_t green_color;
 static lv_color_t red_color;
@@ -47,12 +48,14 @@ typedef struct __attribute__((packed)) {
     int32_t  lap_delta_ms; 
 } gauge_payload_t;
 
+static const float BASE_FUEL_PRESSURE = 43.0;
 
 static int g_water_temp = 100;
 static int g_oil_temp = 142;
 static int g_oil_pressure = 2;
-static int g_fuel_pressure = 34;
+static int g_fuel_pressure = 39;
 static int g_fuel_level = 50.0;
+static int g_boost = 0.0;
 
 static uint16_t crc16_ccitt(const uint8_t *data, uint16_t len){
     uint16_t crc = 0xFFFF;
@@ -149,6 +152,7 @@ static void uart_rx_task(void *arg){
             g_oil_pressure = (int)oil_pressure;
             g_fuel_pressure = (int)fuel_pressure;
             g_fuel_level = (int)fuel_level;
+            g_boost = boost;
 
             #if ENABLE_LOGGING
             ESP_LOGI(TAG,
@@ -210,13 +214,18 @@ static void update_label_if_needed(lv_obj_t *label, int new_value, lv_color_t ne
     }
 }
 
+bool isFuelPressureOK() {
+    return fabs(g_fuel_pressure - (BASE_FUEL_PRESSURE + g_boost)) <= 4.0;
+}
+
 void update_gauge_values(){
     lv_color_t water_temp_color = green_color;
     lv_color_t oil_temp_color = green_color;
     lv_color_t oil_pressure_color = green_color;
     lv_color_t fuel_pressure_color = green_color;
 
-    fuel_pressure_color = (g_fuel_pressure > 70 || g_fuel_pressure < 30) ? red_color : green_color;
+
+    fuel_pressure_color = (!isFuelPressureOK() || g_fuel_pressure < 30) ? red_color : green_color;
     water_temp_color = (g_water_temp < 150) ? blue_color : ((g_water_temp > 205) ? red_color : green_color);
     oil_temp_color = (g_oil_temp < 150) ? blue_color : ((g_oil_temp > 220) ? red_color : green_color);
     oil_pressure_color = (g_oil_pressure > 125 || g_oil_pressure < 25) ? red_color : green_color;
