@@ -51,6 +51,7 @@ Run:
 Test workflow:
 - Primary gate: successful `idf.py build`.
 - Confirm expected sources/dependencies are present in `main/CMakeLists.txt`.
+- Watch for generated file churn after builds (`sdkconfig`, `sdkconfig.old`, `dependencies.lock`); commit only intentional config/dependency updates.
 
 ### B. App logic + telemetry parsing (`main/main.c`)
 
