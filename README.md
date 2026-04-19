@@ -18,3 +18,15 @@ https://youtu.be/t7H6pevep40
 6. Build 
 
 7. Flash
+
+## Cursor Cloud / headless setup
+
+If you are running in a Linux terminal environment (including Cursor Cloud), use:
+
+1. `./scripts/dev-setup.sh`
+2. `./scripts/build.sh`
+
+Optional environment variables:
+- `ESP_IDF_VERSION` (default: `v5.3.2`)
+- `ESP_IDF_PATH` (default: `$HOME/esp-idf`)
+- `IDF_TARGET` (default: `esp32s3`)
