@@ -1,142 +1,67 @@
 ---
 name: cloud-agent-starter
-description: Use when starting work in this ESP-IDF firmware repo from Cursor Cloud and needing practical setup, build, flash, monitor, feature-flag, and testing workflows by codebase area.
+description: Use when starting work in Cursor Cloud on this ESP-IDF + LVGL firmware repo and needing bootstrap, build, flash/monitor, Kconfig flags, hardware-less gates, or area-specific verification steps.
 ---
 
-# Cloud Agent Starter (ESP32-S3 Gauge Cluster)
+# Cloud agent starter (ESP32-S3 gauge cluster firmware)
 
-Minimal runbook for Cloud agents. Use this first, then dive into deeper skills.
+Runbook for agents in headless Linux (Cursor Cloud). There is no web server or npm app: the “app” is firmware you build and optionally flash to hardware.
 
-## 0) Fast start (do this in order)
+## 0) Auth and permissions (before scripts)
 
-1. Confirm repo root:
-   - `pwd` should be this project root.
-2. Confirm auth/tooling state:
-   - `git status`
-   - `gh auth status` (optional; useful for PR/CI inspection)
-3. Bootstrap ESP-IDF once:
-   - `./scripts/dev-setup.sh`
-4. Build firmware:
-   - `./scripts/build.sh`
+- **GitHub / PRs:** `git status`; `gh auth status` (use the environment’s token or `gh auth login` if needed).
+- **`dev-setup.sh`:** clones ESP-IDF and may run `sudo apt-get` for Python venv support — needs **network + sudo**.
+- **Firmware runtime:** no cloud login; UART/BT are code + Kconfig, not repo credentials.
 
-Notes:
-- No app-level login is required for firmware runtime.
-- `dev-setup.sh` clones and installs ESP-IDF (`v5.3.2` by default).
-- `build.sh` sources `export.sh`, sets target (`esp32s3`), and builds.
+## 1) Bootstrap and build (minimum viable loop)
 
-## 1) Common environment controls
+1. `./scripts/dev-setup.sh` — ESP-IDF default `v5.3.2` → `$HOME/esp-idf`, then `install.sh` for the target.
+2. `./scripts/build.sh` — `export.sh`, `idf.py set-target esp32s3`, `idf.py build`.
 
-Environment variables used by repo scripts:
-- `ESP_IDF_VERSION` (default `v5.3.2`)
-- `ESP_IDF_PATH` (default `$HOME/esp-idf`)
-- `IDF_TARGET` (default `esp32s3`)
+Overrides: `ESP_IDF_VERSION`, `ESP_IDF_PATH`, `IDF_TARGET` (same defaults as `README.md`). Example: `ESP_IDF_PATH=/opt/esp-idf ./scripts/build.sh`.
 
-Examples:
-- `ESP_IDF_PATH=/opt/esp-idf ./scripts/build.sh`
-- `IDF_TARGET=esp32s3 ./scripts/dev-setup.sh`
+Missing `export.sh` → run `dev-setup.sh` or fix `ESP_IDF_PATH`.
 
-If `./scripts/build.sh` says ESP-IDF is missing, run `./scripts/dev-setup.sh` first.
+## 2) “Starting” the firmware (hardware / serial)
 
-## 2) Workflows by codebase area
+1. USB + serial port (often `/dev/ttyUSB0` or `/dev/ttyACM0`).
+2. ESP-IDF shell: `source "$ESP_IDF_PATH/export.sh"`.
 
-### A. Build/config system (`CMakeLists.txt`, `main/CMakeLists.txt`, `sdkconfig*`, `scripts/*`)
+```bash
+idf.py -p /dev/ttyUSB0 flash monitor
+```
 
-Use when changing component lists, dependencies, target settings, or build scripts.
+**No hardware:** require `./scripts/build.sh`; say explicitly that flash/monitor was not run.
 
-Run:
-1. `./scripts/build.sh`
-2. If config changed, run `idf.py menuconfig` (after ESP-IDF export) and rebuild.
-3. For clean rebuilds: `idf.py fullclean && ./scripts/build.sh`
+## 3) Feature flags and configuration (Kconfig / sdkconfig)
 
-Test workflow:
-- Primary gate: successful `idf.py build`.
-- Confirm expected sources/dependencies are present in `main/CMakeLists.txt`.
-- Watch for generated file churn after builds (`sdkconfig`, `sdkconfig.old`, `dependencies.lock`); commit only intentional config/dependency updates.
+Toggles: **`main/Kconfig.projbuild`** (LV demos, frame buffer, BT defaults, fonts, …).
 
-### B. App logic + telemetry parsing (`main/main.c`)
+Flow: `source "$ESP_IDF_PATH/export.sh"` → `idf.py set-target esp32s3` → `idf.py menuconfig` (**Example Configuration**) → `idf.py build` (or `./scripts/build.sh` after export).
 
-Use when changing UART packet parsing, CRC logic, mapping, label updates, timers.
+Defaults for clones/CI: `sdkconfig.defaults`, `sdkconfig.defaults.esp32s3`.
 
-Run:
-1. `./scripts/build.sh`
-2. Hardware path: `idf.py -p <PORT> flash monitor`
-3. Feed real/simulated UART frames at the configured UART settings in `main.c`.
+**Mock / stub without device:** Kconfig or tight compile-time guards in the touched file; rebuild. Strip debug spam before merge unless requested.
 
-Test workflow:
-- Compile gate: build passes.
-- Runtime gate (hardware): verify labels/arcs update and monitor output has no CRC spam.
-- If debugging parser issues, temporarily enable extra logging, validate in monitor, then remove debug-only edits before final commit.
+## 4) Workflows by codebase area
 
-### C. UI + LVGL assets (`main/ui/**`, `main/LVGL_Driver/**`)
+| Area | Paths | Run | Test / verify |
+|------|--------|-----|----------------|
+| **Build + wiring** | `CMakeLists.txt`, `main/CMakeLists.txt`, `scripts/*.sh`, `partitions.csv` | `./scripts/build.sh`; optional `shellcheck scripts/*.sh` | Clean build; CMake/source list edits → no missing symbols. |
+| **Components** | `main/idf_component.yml`, `dependencies.lock` | `./scripts/build.sh` | Resolves deps; lockfile diffs minimal and intentional. |
+| **Sdkconfig** | `sdkconfig`, `sdkconfig.defaults*`, `sdkconfig.old` | `idf.py menuconfig` + build | Commit only intentional sdkconfig lines. |
+| **App / UART** | `main/main.c` | build; device: `idf.py -p PORT flash monitor` | HW: CRC/telemetry sane; monitor not spammy. |
+| **UI / LVGL** | `main/ui/**`, `main/LVGL_Driver/**`, `main/ui/boot/**` | build; device: flash + monitor | HW: boot UI, widgets, tearing/perf OK. |
+| **Drivers** | `main/LCD_Driver/**`, `main/Touch_Driver/**`, `main/I2C_Driver/**`, `main/EXIO/**`, `main/Buzzer/**`, `main/SD_Card/**`, `main/PCF85063/**` | build; device: flash + monitor | HW: init logs + peripherals behave. |
 
-Use when changing generated UI screens, styles, fonts, or LVGL integration.
+**Full clean when builds act “stuck” after config or generator changes:**
 
-Run:
-1. `./scripts/build.sh`
-2. Hardware path: `idf.py -p <PORT> flash monitor`
+```bash
+source "$ESP_IDF_PATH/export.sh"
+idf.py fullclean
+./scripts/build.sh
+```
 
-Test workflow:
-- Compile gate: no unresolved symbols from generated UI files.
-- Runtime gate (hardware): confirm screen renders, widgets update, no visible flicker/tearing regressions.
-- Keep generated asset changes grouped in commits so reviewers can isolate logic vs generated code.
+## 5) Updating this skill
 
-### D. Hardware drivers (`main/LCD_Driver/**`, `main/Touch_Driver/**`, `main/I2C_Driver/**`, `main/EXIO/**`, `main/Buzzer/**`, `main/SD_Card/**`)
-
-Use when changing peripheral initialization or device communication.
-
-Run:
-1. `./scripts/build.sh`
-2. Hardware path: `idf.py -p <PORT> flash monitor`
-
-Test workflow:
-- Compile gate: build succeeds with driver changes.
-- Runtime gate (hardware): verify boot/init sequence in monitor logs and that peripherals respond (display, touch, etc.).
-- Keep init order checks focused around `app_main()` in `main/main.c`.
-
-## 3) Feature flags and mocking patterns
-
-### Kconfig-style flags
-
-Repo flags live in `main/Kconfig.projbuild` (for example: frame-buffer and LV demo options).
-
-Workflow:
-1. `idf.py menuconfig`
-2. Toggle flags under the project config menus.
-3. `idf.py build`
-4. If a default should be versioned, propagate into `sdkconfig.defaults` / `sdkconfig.defaults.esp32s3`.
-
-### Code-level debug toggles
-
-For short-term diagnostics (example: parser logging), use small local compile-time toggles in the touched module, validate, then remove before final commit unless the flag is intended to be permanent.
-
-### Hardware-missing fallback
-
-In Cloud environments without serial hardware access:
-- Treat `./scripts/build.sh` as the hard gate.
-- Document exactly which runtime checks still require on-device validation.
-- Do not claim flash/monitor validation was completed unless it actually ran.
-
-## 4) Practical test matrix (copy/paste)
-
-- Build-only sanity:
-  - `./scripts/build.sh`
-- Config regression:
-  - `idf.py menuconfig`
-  - `idf.py build`
-- Full device loop:
-  - `idf.py -p <PORT> flash monitor`
-
-Use the smallest workflow that proves your change, but always run at least one concrete command.
-
-## 5) Keep this skill fresh (short maintenance loop)
-
-Whenever you discover a new runbook trick (setup fix, monitor filter, config gotcha, faster test path):
-
-1. Add a short entry in the relevant area above.
-2. Include:
-   - symptom
-   - exact command/change
-   - how it was validated
-3. Remove stale steps immediately when scripts or layout change.
-
-Keep this file minimal and executable: every command here should be something a new Cloud agent can run right away.
+On a new repeatable trick: add **one** bullet or extend the matching table row (**symptom → command/file → how verified**); remove stale text in the same edit. Broader contributor docs → `README.md`; keep this file as the **short agent command path** only.
