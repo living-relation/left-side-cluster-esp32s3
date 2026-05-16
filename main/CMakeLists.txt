@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
             "main.c"
+            "dash_bridge.c"
             "EXIO/TCA9554PWR.c"
             "LCD_Driver/ST7701S.c"
             "Touch_Driver/GT911.c"
@@ -11,8 +12,6 @@ idf_component_register(
             "Buzzer/Buzzer.c"                             
             "ui/ui.c"
             "ui/screens/ui_Screen1.c"
-            "ui/fonts/Doto_Extra_Bold_84.c"
-            "ui/fonts/Schoolbell_24.c"
             "ui/images/ui_black_boot_png.c"
             "ui/images/low_gas_icon_no_bg.c"
             "ui/boot/boot_screen.c"
