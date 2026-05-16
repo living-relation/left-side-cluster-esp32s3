@@ -1,8 +1,23 @@
+/**
+ * main.c — TrackCluster LEFT cluster (ESP32-S3, 480×480)
+ *
+ * UART consumer only. Receives LEFT frames (FRAME_TYPE 0x01) from
+ * the center cluster at 921600 8N1 on GPIO 18.
+ *
+ * Displays: MPH (arc + digital), Oil Temp, Oil Pressure,
+ *           Fuel Pressure, Fuel Level (mini-arcs).
+ */
+
 #include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#include <math.h>
+
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+
 #include "TCA9554PWR.h"
 #include "ST7701S.h"
 #include "GT911.h"
@@ -12,304 +27,151 @@
 #include "ui/ui.h"
 #include "driver/uart.h"
 #include "esp_log.h"
-#include <string.h>
-#include <stdint.h>
-#include <math.h>
+#include "esp_timer.h"
 
-static lv_color_t green_color;
-static lv_color_t red_color;
-static lv_color_t orange_color;
-static lv_color_t purple_color;
-static lv_color_t pink_color;
-static lv_color_t blue_color;
+#include "left-dash_data.h"
+#include "left-colors.h"
 
-static bool low_fuel_blink_state = false;
+/* ── UART config ───────────────────────────────────────────────────────── */
+#define UART_PORT       UART_NUM_1
+#define UART_RX_PIN     18          /* GPIO 18 per design spec */
+#define UART_TX_PIN     17          /* GPIO 17 reserved (future) */
 
-#define UART_PORT      UART_NUM_1
-#define UART_RX_PIN    44
-#define UART_BAUD      2000000
+static const char *TAG = "LEFT";
 
-#define ENABLE_LOGGING 0
+/* Reference the global dash instance from dash_bridge.c */
+extern volatile dash_data_t dash;
 
-#define SOF_BYTE       0xA5
-#define PKT_LEN        26
-
-static const char *TAG = "RX";
-
-typedef struct __attribute__((packed)) {
-    uint16_t oil_temp;      
-    uint16_t water_temp;    
-    uint16_t oil_pressure;  
-    uint16_t fuel_pressure; 
-    uint16_t fuel_level;   
-    uint16_t afr;         
-    int16_t boost;          
-    uint32_t lap_time_ms;    
-    int32_t  lap_delta_ms; 
-} gauge_payload_t;
-
-static const float BASE_FUEL_PRESSURE = 43.0;
-
-static int g_water_temp = 100;
-static int g_oil_temp = 142;
-static int g_oil_pressure = 2;
-static int g_fuel_pressure = 39;
-static int g_fuel_level = 50.0;
-static int g_boost = 0.0;
-
-static uint16_t crc16_ccitt(const uint8_t *data, uint16_t len){
-    uint16_t crc = 0xFFFF;
-    for (int i = 0; i < len; i++) {
-        crc ^= (uint16_t)data[i] << 8;
-        for (int j = 0; j < 8; j++)
-            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : (crc << 1);
-    }
-    return crc;
-}
-
-
-
-
-static void uart_init(void)
-{
+/* ── UART init ─────────────────────────────────────────────────────────── */
+static void uart_init(void) {
     uart_config_t cfg = {
-        .baud_rate = UART_BAUD,
-        .data_bits = UART_DATA_8_BITS,
-        .parity    = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_DEFAULT
+        .baud_rate  = UART_BRIDGE_BAUD,
+        .data_bits  = UART_DATA_8_BITS,
+        .parity     = UART_PARITY_DISABLE,
+        .stop_bits  = UART_STOP_BITS_1,
+        .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
     };
 
     ESP_ERROR_CHECK(uart_param_config(UART_PORT, &cfg));
+    ESP_ERROR_CHECK(uart_set_pin(UART_PORT,
+                                  UART_TX_PIN,
+                                  UART_RX_PIN,
+                                  UART_PIN_NO_CHANGE,
+                                  UART_PIN_NO_CHANGE));
+    ESP_ERROR_CHECK(uart_driver_install(UART_PORT, 4096, 0, 0, NULL, 0));
 
-    ESP_ERROR_CHECK(uart_set_pin(
-        UART_PORT,
-        UART_PIN_NO_CHANGE,
-        UART_RX_PIN,
-        UART_PIN_NO_CHANGE,
-        UART_PIN_NO_CHANGE
-    ));
-
-    ESP_ERROR_CHECK(uart_driver_install(
-        UART_PORT,
-        4096,   // RX buffer (bigger)
-        0,
-        0,
-        NULL,
-        0
-    ));
+    ESP_LOGI(TAG, "UART initialized (921600 8N1, RX on GPIO %d)", UART_RX_PIN);
 }
 
-
-void update_gauge_label(lv_obj_t *label, float value)
-{
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%.2f", value);
-    lv_label_set_text(label, buf);
-}
-
-static void uart_rx_task(void *arg){
-    uint8_t buf[PKT_LEN];
+/* ── UART RX task ──────────────────────────────────────────────────────── *
+ * Byte-level state machine: sync on SOF 0xA5, accumulate 32 bytes,
+ * validate via dash_decode_left(), stamp last_update_ms.
+ */
+static void uart_rx_task(void *arg) {
+    uint8_t buf[UART_BRIDGE_FRAME_LEN];
     int idx = 0;
+    uint16_t seq;
 
     while (1) {
         uint8_t byte;
         if (uart_read_bytes(UART_PORT, &byte, 1, portMAX_DELAY) != 1)
             continue;
 
-        // sync on SOF
-        if (idx == 0 && byte != SOF_BYTE)
+        /* Sync on SOF */
+        if (idx == 0 && byte != UART_BRIDGE_SOF)
             continue;
 
         buf[idx++] = byte;
 
-        if (idx == PKT_LEN) {
+        if (idx == UART_BRIDGE_FRAME_LEN) {
             idx = 0;
 
-            uint16_t rx_crc = buf[PKT_LEN - 2] | (buf[PKT_LEN - 1] << 8);
+            /* Decode directly into a temp, then copy under critical section */
+            dash_data_t tmp;
+            if (dash_decode_left(buf, &tmp, &seq)) {
+                tmp.last_update_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
 
-            uint16_t calc_crc = crc16_ccitt(&buf[1], PKT_LEN - 3);
-
-            if (rx_crc != calc_crc) {
-                ESP_LOGW(TAG, "CRC fail");
-                continue;
+                portDISABLE_INTERRUPTS();
+                memcpy((void *)&dash, &tmp, sizeof(dash_data_t));
+                portENABLE_INTERRUPTS();
+            } else {
+                ESP_LOGW(TAG, "CRC/frame fail");
             }
-
-            gauge_payload_t p;
-            memcpy(&p, &buf[2], sizeof(p));
-
-            float afr = p.afr * 0.1f; 
-            float boost = p.boost * 0.1f;
-            float water_temp = p.water_temp *0.1f;
-            float oil_temp = p.oil_temp *0.1f;
-            float oil_pressure = p.oil_pressure *0.1f;
-            float fuel_pressure = p.fuel_pressure *0.1f;
-            float fuel_level = p.fuel_level *0.1f;
-
-            g_water_temp = (int)water_temp;
-            g_oil_temp = (int)oil_temp;
-            g_oil_pressure = (int)oil_pressure;
-            g_fuel_pressure = (int)fuel_pressure;
-            g_fuel_level = (int)fuel_level;
-            g_boost = boost;
-
-            #if ENABLE_LOGGING
-            ESP_LOGI(TAG,
-                "Oil %.1fC Water %.1fC AFR %.2f Boost %.1fkPa",
-                p->oil_temp / 10.0f,
-                p->water_temp / 10.0f,
-                p->afr / 10.0f,
-                p->boost / 10.0f
-            );
-            #endif
         }
     }
 }
 
+/* ── Staleness state ───────────────────────────────────────────────────── */
+typedef enum {
+    STALE_NORMAL,       /* 0–500 ms: full render */
+    STALE_FADING,       /* 500–2000 ms: 30% alpha */
+    STALE_NO_ECU,       /* >2000 ms: NO ECU pill */
+} stale_state_t;
 
+static stale_state_t stale_state = STALE_NO_ECU;  /* start as no-data */
 
+static stale_state_t check_staleness(void) {
+    uint32_t now = (uint32_t)(esp_timer_get_time() / 1000ULL);
+    uint32_t age = now - dash.last_update_ms;
 
-static inline int map_int(int x,
-                          int in_min, int in_max,
-                          int out_min, int out_max)
-{
-    return (x - in_min) * (out_max - out_min)
-           / (in_max - in_min)
-           + out_min;
+    if (dash.last_update_ms == 0)     return STALE_NO_ECU;
+    if (age <= DASH_STALE_MS)         return STALE_NORMAL;
+    if (age <= DASH_STALE_OFF_MS)     return STALE_FADING;
+    return STALE_NO_ECU;
 }
 
-static inline int constrain_int(int x, int low, int high){
-    if (x < low) return low;
-    if (x > high) return high;
-    return x;
-}
+/* ── Paint timer (33 ms = 30 Hz) ───────────────────────────────────────── */
+static void paint_timer_cb(lv_timer_t *t) {
+    stale_state = check_staleness();
 
-static void init_label_styles(void){
-
-    blue_color = lv_palette_main(LV_PALETTE_CYAN);
-    green_color = lv_color_hex(0x28FF00);
-    red_color = lv_palette_main(LV_PALETTE_PINK);
-    orange_color = lv_palette_main(LV_PALETTE_DEEP_ORANGE);
-    purple_color = lv_palette_main(LV_PALETTE_PURPLE);
-    pink_color = lv_palette_main(LV_PALETTE_PINK);
-}
-
-static void update_label_if_needed(lv_obj_t *label, int new_value, lv_color_t new_color) {
-    if (!label) return;  // safety check
-
-    char buf[12];
-    snprintf(buf, sizeof(buf), "%d", new_value);
-
-    // Only update text if changed
-    const char *old_text = lv_label_get_text(label);
-    if (strcmp(old_text, buf) != 0) {
-        lv_label_set_text(label, buf);
-    }
-
-    // Only update color if changed
-    lv_color_t old_color = lv_obj_get_style_text_color(label, LV_PART_MAIN | LV_STATE_DEFAULT);
-    if (old_color.full != new_color.full) {
-        lv_obj_set_style_text_color(label, new_color, LV_PART_MAIN | LV_STATE_DEFAULT);
-    }
-}
-
-bool isFuelPressureOK() {
-    return fabs(g_fuel_pressure - (BASE_FUEL_PRESSURE + g_boost)) <= 4.0;
-}
-
-void update_gauge_values(){
-    lv_color_t water_temp_color = green_color;
-    lv_color_t oil_temp_color = green_color;
-    lv_color_t oil_pressure_color = green_color;
-    lv_color_t fuel_pressure_color = green_color;
-
-
-    fuel_pressure_color = (!isFuelPressureOK() || g_fuel_pressure < 30) ? red_color : green_color;
-    water_temp_color = (g_water_temp < 150) ? blue_color : ((g_water_temp > 205) ? red_color : green_color);
-    oil_temp_color = (g_oil_temp < 150) ? blue_color : ((g_oil_temp > 220) ? red_color : green_color);
-    oil_pressure_color = (g_oil_pressure > 125 || g_oil_pressure < 25) ? red_color : green_color;
-
-    update_label_if_needed(ui_Label5, g_water_temp, water_temp_color);
-    update_label_if_needed(ui_Label6, g_fuel_pressure, fuel_pressure_color);
-    update_label_if_needed(ui_Label7, g_oil_temp, oil_temp_color);
-    update_label_if_needed(ui_Label8, g_oil_pressure, oil_pressure_color);
-
-}
-
-void update_fuel_arc(){
-
-    // Update for fuel gauge color, slows down FPS a little
-    lv_color_t new_color = green_color;
-    new_color = (g_fuel_level < 20) ? red_color : ((g_fuel_level < 35) ? orange_color : green_color) ;
-
-    // Only update color if changed
-    lv_color_t old_color = lv_obj_get_style_arc_color(fuel_arc, LV_PART_INDICATOR);
-    if (old_color.full != new_color.full) {
-        lv_obj_set_style_arc_color(fuel_arc, new_color, LV_PART_INDICATOR);
-    }
-
-    if (g_fuel_level < 15) {
-        //Blinking handled in low_fuel_blink_timer
-    } else if (g_fuel_level < 20) {
-        lv_obj_clear_flag(low_gas_img, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(low_gas_img, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    lv_arc_set_value(fuel_arc, g_fuel_level);
-}
-
-void low_fuel_blink_timer(lv_timer_t * t) {
-    if (g_fuel_level >= 15) {
+    if (stale_state == STALE_NO_ECU) {
+        /* TODO Phase 4: show "WAITING FOR ECU…" / "NO ECU" pill */
         return;
     }
 
-    low_fuel_blink_state = !low_fuel_blink_state;
+    /* Snapshot dash under critical section */
+    dash_data_t snap;
+    portDISABLE_INTERRUPTS();
+    memcpy(&snap, (const void *)&dash, sizeof(dash_data_t));
+    portENABLE_INTERRUPTS();
 
-    if (low_fuel_blink_state) {
-        lv_obj_clear_flag(low_gas_img, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(low_gas_img, LV_OBJ_FLAG_HIDDEN);
+    /* TODO Phase 4: update all LVGL widgets from snap */
+    (void)snap;
+}
+
+/* ── Alarm task (20 ms) ────────────────────────────────────────────────── */
+static void alarm_task(void *arg) {
+    while (1) {
+        /* TODO Phase 4: check thresholds, set alarm flags */
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
-void gauge_timer(lv_timer_t * t) {
-    update_gauge_values();
-}
-
-void arc_timer(lv_timer_t * t){
-    update_fuel_arc();
-}
-
-
-void app_main(void){   
+/* ── App entry ─────────────────────────────────────────────────────────── */
+void app_main(void) {
     I2C_Init();
     EXIO_Init();
     LCD_Init();
     Touch_Init();
     LVGL_Init();
 
-    init_label_styles();
-    
     ui_init();
-
     uart_init();
 
-    xTaskCreate(
-        uart_rx_task,
-        "uart_rx",
-        4096,
-        NULL,
-        10,
-        NULL
-    );
+    /* UART RX task — high priority */
+    xTaskCreate(uart_rx_task, "uart_rx", 4096, NULL,
+                configMAX_PRIORITIES - 2, NULL);
 
-    lv_timer_create(gauge_timer, 100, NULL);
-    lv_timer_create(arc_timer, 1000, NULL);
-    lv_timer_create(low_fuel_blink_timer, 400, NULL);
+    /* Alarm task — high priority, 20 ms cadence */
+    xTaskCreate(alarm_task, "alarm", 2048, NULL,
+                configMAX_PRIORITIES - 3, NULL);
 
-    Set_Backlight(0); 
-    vTaskDelay(pdMS_TO_TICKS(750)); 
+    /* Paint timer — 30 Hz via LVGL timer */
+    lv_timer_create(paint_timer_cb, 33, NULL);
+
+    /* Boot splash: blank → backlight on */
+    Set_Backlight(0);
+    vTaskDelay(pdMS_TO_TICKS(750));
     Set_Backlight(100);
 }
