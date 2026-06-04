@@ -1,0 +1,8 @@
+{
+    "idf.flashType": "UART",
+    "idf.espIdfPath": "C:\\esp\\v5.5.4\\esp-idf",
+    "idf.toolsPath": "C:\\Espressif\\tools",
+    "idf.pythonBinPath": "C:\\Espressif\\tools\\python\\v5.5.4\\venv\\Scripts\\python.exe",
+    "idf.customExtraPaths": "C:\\Espressif\\tools\\ccache\\4.12.1\\ccache-4.12.1-windows-x86_64;C:\\Espressif\\tools\\cmake\\3.30.2\\bin;C:\\Espressif\\tools\\ninja\\1.12.1;C:\\Espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20260121\\xtensa-esp-elf\\bin;C:\\Espressif\\tools\\python\\v5.5.4\\venv\\Scripts",
+    "idf.currentSetup": "C:\\esp\\v6.0.1\\esp-idf"
+}

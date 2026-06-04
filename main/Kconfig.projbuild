@@ -1,0 +1,43 @@
+menu "TrackCluster — side cluster pin map (Waveshare ESP32-S3-Touch-LCD-2.8C)"
+
+    # ── Shared I2C bus ────────────────────────────────────────────────────
+    # TCA9554 expander (drives the ST7701 panel CS / RST lines) + GT911 touch.
+    # Without these the panel never comes out of reset and the screen stays blank.
+    # Schematic-verified for the Waveshare ESP32-S3-Touch-LCD-2.8C: SCL=GPIO7, SDA=GPIO15.
+
+    config TC_I2C_SCL_GPIO
+        int "Shared I2C SCL GPIO (TCA9554 + GT911)"
+        range 0 48
+        default 7
+
+    config TC_I2C_SDA_GPIO
+        int "Shared I2C SDA GPIO (TCA9554 + GT911)"
+        range 0 48
+        default 15
+
+    # ── UART link from the center cluster (J9 connector) ──────────────────
+    # This board is a pure consumer: it RECEIVES 32-byte display frames from the
+    # center cluster on RX (wired to the center's UART TX). TX is reserved for
+    # future telemetry back to center. 921600 8N1.
+
+    config TC_UART_RX_GPIO
+        int "UART RX ← center cluster TX"
+        range 0 48
+        default 44
+
+    config TC_UART_TX_GPIO
+        int "UART TX → center cluster RX (reserved telemetry)"
+        range 0 48
+        default 43
+
+    config TC_BENCH_MODE
+        bool "Bench mode — standalone demo sweep (no ECU/center needed)"
+        default n
+        help
+            When enabled, the cluster ignores the UART link and slowly sweeps every
+            displayed channel through its range so you can verify all widgets/colors
+            on the bench. OFF = normal operation (real data from center; gauges sit at
+            0 until frames arrive — no overlay either way). Toggle via
+            idf.py menuconfig → TrackCluster, or CONFIG_TC_BENCH_MODE=y in sdkconfig.defaults.
+
+endmenu

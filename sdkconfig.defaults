@@ -1,0 +1,46 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# TrackCluster LEFT — ESP32-S3-Touch-LCD-2.8C — build defaults
+# Applied automatically on `idf.py set-target esp32s3` / first build.
+# ─────────────────────────────────────────────────────────────────────────────
+CONFIG_IDF_TARGET="esp32s3"
+
+# ── PSRAM (REQUIRED) ─────────────────────────────────────────────────────────
+# The ST7701 RGB framebuffer lives in PSRAM (bsp.c sets fb_in_psram = true).
+# ESP32-S3R8 = 8 MB Octal PSRAM. WITHOUT PSRAM THE PANEL INIT FAILS / SCREEN BLACK.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# ── Flash ── the 2.8C board ships with 16 MB; confirm against your board.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# ── CPU at full speed for smooth RGB refresh ─────────────────────────────────
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# ── Custom partition table ───────────────────────────────────────────────────
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# ── RGB LCD smoothness ─────────────────────────────────────────────────────────
+# Bounce buffer + bb_mode in bsp.c; esp_lvgl_port RGB callback patched with IRAM_ATTR.
+CONFIG_LCD_RGB_ISR_IRAM_SAFE=y
+CONFIG_GDMA_CTRL_FUNC_IN_IRAM=y
+
+# ── LVGL settings (carried over from center bring-up) ─────────────────────────
+# Compressed-font decoder: the ui/fonts/*.c are exported bitmap_format=1
+# (LV_FONT_FMT_TXT_COMPRESSED) — without this every glyph renders as a tofu box.
+CONFIG_LV_USE_FONT_COMPRESSED=y
+# clib malloc → LVGL draws from the FreeRTOS heap (incl. PSRAM), so the mini-arc
+# canvas/triangle draw tasks aren't capped by LVGL's static builtin pool.
+CONFIG_LV_USE_BUILTIN_MALLOC=n
+CONFIG_LV_USE_CLIB_MALLOC=y
+# 1 kHz tick + 8 ms refresh for smooth animation (default 100 Hz is too coarse).
+CONFIG_FREERTOS_HZ=1000
+CONFIG_LV_DEF_REFR_PERIOD=8
+
+# ── BENCH MODE: ON ───────────────────────────────────────────────────────────
+# Standalone demo sweep — runs with NOTHING wired (no center/ECU/UART).
+# Flip to =n (or toggle in menuconfig → TrackCluster) for normal operation.
+CONFIG_TC_BENCH_MODE=y
