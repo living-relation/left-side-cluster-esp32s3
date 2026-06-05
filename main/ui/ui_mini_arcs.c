@@ -14,6 +14,7 @@
  *   START_DEG=135 → bottom-left (7:30), sweeps CW to bottom-right (4:30).
  */
 #include "ui_mini_arcs.h"
+#include "ui_signal_filter.h"
 #include "dash_data.h"
 #include "left-colors.h"
 #include "esp_heap_caps.h"
@@ -210,92 +211,6 @@ static lv_color_t fuel_press_display_color(float psi)
     }
     return COLOR_CYAN;
 }
-
-#if !CONFIG_TC_BENCH_MODE
-/* Display-only slosh filter (g_dash.fuel_level stays raw for UART/alarms). */
-#define FUEL_ATTACK_BLEND    0.20f   /* smooth rises — kills instant up-spikes from slosh */
-#define FUEL_RELEASE_BLEND   0.12f   /* slower falls — damp brief dips in corners */
-#define FUEL_DECEL_SNAP_PCT  8.0f    /* large drop still snaps (real emptying) */
-#define FUEL_LABEL_STEP_PCT  1.2f    /* integer label hysteresis band */
-
-static float s_disp_fuel = -1.0f;
-
-static float fuel_level_display_filter(float raw)
-{
-    if (s_disp_fuel < 0.0f) {
-        s_disp_fuel = raw;
-        return raw;
-    }
-    float delta = raw - s_disp_fuel;
-    if (fabsf(delta) >= FUEL_DECEL_SNAP_PCT) {
-        s_disp_fuel = raw;
-    } else if (delta > 0.0f) {
-        s_disp_fuel += delta * FUEL_ATTACK_BLEND;
-    } else {
-        s_disp_fuel += delta * FUEL_RELEASE_BLEND;
-    }
-    return s_disp_fuel;
-}
-
-static int fuel_percent_label(float fl_disp)
-{
-    static int shown = -1;
-    if (shown < 0) {
-        shown = (int)(fl_disp + 0.5f);
-        return shown;
-    }
-    int target = (int)(fl_disp + 0.5f);
-    if (target > shown && (fl_disp - (float)shown) >= FUEL_LABEL_STEP_PCT) {
-        shown = target;
-    } else if (target < shown && ((float)shown - fl_disp) >= FUEL_LABEL_STEP_PCT) {
-        shown = target;
-    }
-    return shown;
-}
-
-/* Display-only oil/fuel PSI (raw stays in g_dash for alarm_task / UART). */
-#define PRESS_RISE_BLEND      0.14f  /* slow on rises — pump/cam ripple */
-#define PRESS_FALL_BLEND      0.38f  /* faster on drops — real loss of pressure */
-#define PRESS_SNAP_PSI        10.0f
-#define PRESS_LABEL_STEP_PSI  2.0f
-static float s_disp_oil_press = -1.0f;
-static float s_disp_fuel_press = -1.0f;
-static int s_oil_press_lbl = -1;
-static int s_fuel_press_lbl = -1;
-
-static float pressure_display_filter(float raw, float *state)
-{
-    if (*state < 0.0f) {
-        *state = raw;
-        return raw;
-    }
-    float delta = raw - *state;
-    if (fabsf(delta) >= PRESS_SNAP_PSI) {
-        *state = raw;
-    } else if (delta < 0.0f) {
-        *state += delta * PRESS_FALL_BLEND;
-    } else {
-        *state += delta * PRESS_RISE_BLEND;
-    }
-    return *state;
-}
-
-static int pressure_psi_label(float disp, int *shown)
-{
-    if (*shown < 0) {
-        *shown = (int)(disp + 0.5f);
-        return *shown;
-    }
-    int target = (int)(disp + 0.5f);
-    if (target > *shown && (disp - (float)*shown) >= PRESS_LABEL_STEP_PSI) {
-        *shown = target;
-    } else if (target < *shown && ((float)*shown - disp) >= PRESS_LABEL_STEP_PSI) {
-        *shown = target;
-    }
-    return *shown;
-}
-
-#endif
 
 #if CONFIG_TC_BENCH_MODE
 static int s_last_lit[4];
@@ -632,6 +547,7 @@ void ui_mini_arcs_update(const dash_data_t *d)
     lv_color_t fl_arc_col;
     bool fl_alarm;
 #if CONFIG_TC_BENCH_MODE
+    float ot_disp = d->oil_temp;
     float op_disp = d->oil_press;
     float fp_disp = d->fuel_press;
     int op_lbl = -1;
@@ -640,12 +556,13 @@ void ui_mini_arcs_update(const dash_data_t *d)
     int fl_lbl = -1;
     fuel_level_colors(fl_raw, &fl_alarm, &fl_arc_col, &fl_arc_col);
 #else
-    float op_disp = pressure_display_filter(d->oil_press, &s_disp_oil_press);
-    float fp_disp = pressure_display_filter(d->fuel_press, &s_disp_fuel_press);
-    int op_lbl = pressure_psi_label(op_disp, &s_oil_press_lbl);
-    int fp_lbl = pressure_psi_label(fp_disp, &s_fuel_press_lbl);
-    float fl_disp = fuel_level_display_filter(fl_raw);
-    int fl_lbl = fuel_percent_label(fl_disp);
+    float ot_disp = ui_filter_oil_temp(d->oil_temp);
+    float op_disp = ui_filter_oil_press(d->oil_press);
+    float fp_disp = ui_filter_fuel_press(d->fuel_press);
+    int op_lbl = ui_filter_oil_press_label(op_disp);
+    int fp_lbl = ui_filter_fuel_press_label(fp_disp);
+    float fl_disp = ui_filter_fuel_level(fl_raw);
+    int fl_lbl = ui_filter_fuel_level_label(fl_disp);
     fuel_level_colors(fl_disp, &fl_alarm, &fl_arc_col, &fl_arc_col);
 #endif
     /* Arc/ring color from raw PSI so red follows drops (filter lags on decel). */
@@ -665,7 +582,7 @@ void ui_mini_arcs_update(const dash_data_t *d)
     lv_color_t op_txt = mini_arc_lit_color(op_col, COLOR_RED_HOT, op_alarm);
     lv_color_t fl_txt = mini_arc_lit_color(fl_arc_col, COLOR_RED_HOT, fl_alarm);
 
-    update_arc(0, d->oil_temp, 100.0f, 300.0f, ot_col, COLOR_RED_HOT, ot_hot,
+    update_arc(0, ot_disp, 100.0f, 300.0f, ot_col, COLOR_RED_HOT, ot_hot,
                s_arcs[0].val_lbl, ot_txt, -1);
     update_arc(1, op_disp, 0.0f, 140.0f, op_col, COLOR_RED_HOT, op_alarm,
                s_arcs[1].val_lbl, op_txt, op_lbl);

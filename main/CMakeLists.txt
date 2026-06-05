@@ -9,6 +9,7 @@ idf_component_register(
         "ui/ui_mph_arc.c"
         "ui/ui_mini_arcs.c"
         "ui/ui_boot.c"
+        "ui/ui_signal_filter.c"
         "ui/fonts/aerospace_88.c"
         "ui/fonts/aerospace_28.c"
         "ui/fonts/aerospace_32.c"
