@@ -33,6 +33,8 @@ Recording of bench mode on this cluster (boot splash, then gauge sweep — no UA
 
 **[`docs/demos/Left_demo.mp4`](docs/demos/Left_demo.mp4)** — open locally after clone, or preview on GitHub by clicking the file.
 
+> **Git LFS:** Demo `.mp4` files are stored with Git LFS. Run `git lfs install` once **before** `git clone`, or `git lfs pull` after clone if the video is missing or only a few kilobytes.
+
 ### Key settings (already in `sdkconfig.defaults`)
 | Setting | Value |
 |---|---|
