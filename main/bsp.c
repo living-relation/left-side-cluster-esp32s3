@@ -40,6 +40,8 @@
 #include "esp_io_expander.h"
 #include "esp_io_expander_tca9554.h"
 #include "esp_lvgl_port.h"
+#include "esp_lcd_panel_rgb.h"
+#include <string.h>
 #if __has_include("esp_lcd_st7701.h")
 #include "esp_lcd_st7701.h"
 #endif
@@ -122,8 +124,27 @@ static esp_err_t i2c_and_expander_init(void)
     return ESP_OK;
 }
 
-static esp_err_t backlight_init(uint8_t percent)
+static bool s_backlight_pwm_ready = false;
+
+void bsp_backlight_hold_off(void)
 {
+    gpio_config_t bl = {
+        .pin_bit_mask = 1ULL << BSP_BL_GPIO,
+        .mode         = GPIO_MODE_OUTPUT,
+        .pull_up_en   = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&bl);
+    gpio_set_level(BSP_BL_GPIO, 0);
+}
+
+static esp_err_t backlight_pwm_init(void)
+{
+    if (s_backlight_pwm_ready) {
+        return ESP_OK;
+    }
+
     ledc_timer_config_t tcfg = {
         .speed_mode      = LEDC_LOW_SPEED_MODE,
         .duty_resolution = BSP_BL_LEDC_RES,
@@ -133,21 +154,61 @@ static esp_err_t backlight_init(uint8_t percent)
     };
     ESP_RETURN_ON_ERROR(ledc_timer_config(&tcfg), TAG, "bl_timer");
 
-    if (percent > 100) percent = 100;
-    uint32_t duty = (BSP_BL_DUTY_MAX * percent) / 100u;
-
     ledc_channel_config_t ccfg = {
         .gpio_num   = BSP_BL_GPIO,
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .channel    = BSP_BL_LEDC_CH,
         .timer_sel  = BSP_BL_LEDC_TIMER,
         .intr_type  = LEDC_INTR_DISABLE,
-        .duty       = duty,
+        .duty       = 0,
         .hpoint     = 0,
     };
     ESP_RETURN_ON_ERROR(ledc_channel_config(&ccfg), TAG, "bl_chan");
-    ESP_LOGI(TAG, "Backlight ON @ %u%% (LEDC duty=%lu)", percent, (unsigned long)duty);
+    s_backlight_pwm_ready = true;
     return ESP_OK;
+}
+
+static esp_err_t backlight_set_percent(uint8_t percent)
+{
+    ESP_RETURN_ON_ERROR(backlight_pwm_init(), TAG, "bl_pwm");
+
+    if (percent > 100) {
+        percent = 100;
+    }
+    uint32_t duty = (BSP_BL_DUTY_MAX * percent) / 100u;
+    ESP_RETURN_ON_ERROR(
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, BSP_BL_LEDC_CH, duty), TAG, "bl_duty");
+    ESP_RETURN_ON_ERROR(
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, BSP_BL_LEDC_CH), TAG, "bl_update");
+    ESP_LOGI(TAG, "Backlight %u%% (LEDC duty=%lu)", percent, (unsigned long)duty);
+    return ESP_OK;
+}
+
+static void panel_framebuffer_black(void)
+{
+    void *fb0 = NULL;
+    void *fb1 = NULL;
+    esp_err_t err = esp_lcd_rgb_panel_get_frame_buffer(s_panel, 2, &fb0, &fb1);
+    size_t fb_bytes = (size_t)BSP_LCD_H_RES * BSP_LCD_V_RES * 2;
+    if (err == ESP_OK && fb0 != NULL) {
+        memset(fb0, 0, fb_bytes);
+        if (fb1 != NULL) {
+            memset(fb1, 0, fb_bytes);
+        }
+        return;
+    }
+    fb0 = NULL;
+    err = esp_lcd_rgb_panel_get_frame_buffer(s_panel, 1, &fb0);
+    if (err != ESP_OK || fb0 == NULL) {
+        ESP_LOGW(TAG, "RGB FB clear skipped (%s)", esp_err_to_name(err));
+        return;
+    }
+    memset(fb0, 0, fb_bytes);
+}
+
+void bsp_backlight_on(void)
+{
+    ESP_ERROR_CHECK(backlight_set_percent(80));
 }
 
 #define ST7701_DATA(...) ((const uint8_t[]){__VA_ARGS__}), sizeof((const uint8_t[]){__VA_ARGS__})
@@ -236,7 +297,7 @@ static esp_err_t panel_init(void)
         .psram_trans_align = 64,
         .data_width  = 16,
         .bits_per_pixel = 16,
-        .num_fbs     = 2,
+        .num_fbs     = 1,
         .bounce_buffer_size_px = bounce_px,
         .disp_gpio_num  = -1,
         .pclk_gpio_num  = BSP_PCLK_GPIO,
@@ -282,15 +343,17 @@ static esp_err_t panel_init(void)
 
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel), TAG, "reset");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel),  TAG, "init");
+    panel_framebuffer_black();
     return ESP_OK;
 }
 
 esp_err_t bsp_init(void)
 {
     ESP_LOGI(TAG, "TrackCluster Left BSP — ESP32-S3-Touch-LCD-2.8C");
+    bsp_backlight_hold_off();
     ESP_RETURN_ON_ERROR(i2c_and_expander_init(), TAG, "i2c");
     ESP_RETURN_ON_ERROR(panel_init(),            TAG, "panel");
-    ESP_RETURN_ON_ERROR(backlight_init(80),      TAG, "backlight");
+    ESP_RETURN_ON_ERROR(backlight_pwm_init(),    TAG, "backlight_pwm");
     return ESP_OK;
 }
 
@@ -300,14 +363,20 @@ lv_disp_t *bsp_display_start(void)
 {
     if (s_disp) return s_disp;
 
-    const lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
+    const lvgl_port_cfg_t port_cfg = {
+        .task_priority    = 6,
+        .task_stack       = 7168,
+        .task_affinity    = -1,
+        .task_max_sleep_ms = 500,
+        .timer_period_ms  = 5,
+    };
     ESP_ERROR_CHECK(lvgl_port_init(&port_cfg));
 
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle     = NULL,
         .panel_handle  = s_panel,
-        .buffer_size   = BSP_LCD_H_RES * BSP_LCD_V_RES,
-        .double_buffer = false,
+        .buffer_size   = BSP_LCD_H_RES * 80,
+        .double_buffer = true,
         .hres          = BSP_LCD_H_RES,
         .vres          = BSP_LCD_V_RES,
         .monochrome    = false,
@@ -315,34 +384,26 @@ lv_disp_t *bsp_display_start(void)
         .rotation      = { .swap_xy = false, .mirror_x = false, .mirror_y = false },
         .flags         = {
             .buff_dma = false,
-            .buff_spiram = false,
+            .buff_spiram = true,
             .swap_bytes = false,
-            .direct_mode = true,
+            .direct_mode = false,
         },
     };
     const lvgl_port_display_rgb_cfg_t rgb_cfg = {
-        .flags = { .bb_mode = 1, .avoid_tearing = 1 },
+        .flags = { .bb_mode = 1, .avoid_tearing = 0 },
     };
     s_disp = lvgl_port_add_disp_rgb(&disp_cfg, &rgb_cfg);
 
-    // #region agent log
-    ESP_LOGI(TAG,
-             "AGENT_DEBUG {\"sessionId\":\"d58ccd\",\"hypothesisId\":\"B\",\"location\":\"bsp.c:bsp_display_start\","
-             "\"message\":\"rgb_lvgl_cfg\",\"data\":{\"bounce_px\":%d,\"num_fbs\":2,\"bb_mode\":1,"
-             "\"avoid_tearing\":1,\"direct_mode\":1,\"swap_bytes\":0,\"bench_mode\":%d,\"iram_safe\":%d}}",
-             BSP_LCD_H_RES * BSP_RGB_BOUNCE_LINES,
-#if CONFIG_TC_BENCH_MODE
-             1,
-#else
-             0,
-#endif
-#if CONFIG_LCD_RGB_ISR_IRAM_SAFE
-             1
-#else
-             0
-#endif
-    );
-    // #endregion
+    if (bsp_lvgl_lock(portMAX_DELAY)) {
+        lv_obj_t *scr = lv_screen_active();
+        lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
+        lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+        lv_obj_invalidate(scr);
+        lv_refr_now(NULL);
+        lv_refr_now(NULL);
+        bsp_lvgl_unlock();
+    }
+    panel_framebuffer_black();
 
     return s_disp;
 }

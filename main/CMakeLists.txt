@@ -10,9 +10,12 @@ idf_component_register(
         "ui/ui_mini_arcs.c"
         "ui/ui_boot.c"
         "ui/fonts/aerospace_88.c"
-        "ui/fonts/aerospace_22.c"
-        "ui/fonts/racehead_18.c"
+        "ui/fonts/aerospace_28.c"
+        "ui/fonts/aerospace_32.c"
+        "ui/fonts/aerospace_36.c"
         "ui/fonts/racehead_14.c"
+        "ui/fonts/racehead_18.c"
+        "ui/fonts/racehead_10.c"
         "ui/assets/toyota_logo.c"
 
     INCLUDE_DIRS
