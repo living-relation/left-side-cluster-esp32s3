@@ -21,6 +21,12 @@ extern "C" {
 #define BSP_LCD_H_RES  480
 #define BSP_LCD_V_RES  480
 
+/** Drive BL GPIO low before panel/LVGL init (avoids power-on white flash). */
+void bsp_backlight_hold_off(void);
+
+/** Enable backlight after the first black LVGL frame (call from ui_init). */
+void bsp_backlight_on(void);
+
 esp_err_t  bsp_init(void);
 lv_disp_t *bsp_display_start(void);
 bool        bsp_lvgl_lock(uint32_t timeout_ms);

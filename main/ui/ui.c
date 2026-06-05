@@ -31,7 +31,33 @@
 
 extern portMUX_TYPE g_dash_mux;
 
+LV_FONT_DECLARE(aerospace_88);
+LV_FONT_DECLARE(aerospace_28);
+LV_FONT_DECLARE(racehead_18);
+
 static const char *TAG_UI = "ui";
+
+// #region agent log
+static void ui_font_boot_probe(void)
+{
+    lv_font_glyph_dsc_t gdsc;
+    bool g88 = lv_font_get_glyph_dsc(&aerospace_88, &gdsc, (uint32_t)'0', (uint32_t)'0');
+    bool g28 = lv_font_get_glyph_dsc(&aerospace_28, &gdsc, (uint32_t)'0', (uint32_t)'0');
+    bool g18 = lv_font_get_glyph_dsc(&racehead_18, &gdsc, (uint32_t)'M', (uint32_t)'0');
+    ESP_LOGI(TAG_UI,
+             "AGENT_DEBUG {\"sessionId\":\"d58ccd\",\"runId\":\"font-probe-com5\","
+             "\"hypothesisId\":\"H-font\",\"location\":\"ui.c:ui_font_boot_probe\","
+             "\"message\":\"glyph_probe\",\"data\":{\"a88_zero\":%d,\"a28_zero\":%d,"
+             "\"rh18_M\":%d,\"compressed_cfg\":%d}}",
+             g88 ? 1 : 0, g28 ? 1 : 0, g18 ? 1 : 0,
+#if CONFIG_LV_USE_FONT_COMPRESSED
+             1
+#else
+             0
+#endif
+    );
+}
+// #endregion
 static bool s_live = false;
 
 #if CONFIG_TC_BENCH_MODE
@@ -136,6 +162,7 @@ void ui_init(lv_disp_t *disp)
     ui_mph_arc_create(scr);
     ui_mini_arcs_raise_text();
     ui_mph_arc_raise_text();
+    ui_font_boot_probe();
     ui_boot_start(scr, ui_on_boot_complete);
 
     if (bsp_lvgl_lock(portMAX_DELAY)) {

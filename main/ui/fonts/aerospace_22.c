@@ -167,7 +167,7 @@ static const uint16_t unicode_list_aerospace_22[] = {
 
 static const lv_font_fmt_txt_cmap_t cmaps_aerospace_22[] = {
     {
-        .range_start = 32, .range_length = 18,
+        .range_start = 32, .range_length = 145,
         .glyph_id_start = 1,
         .unicode_list = unicode_list_aerospace_22,
         .glyph_id_ofs_list = NULL, .list_length = 18,
@@ -197,8 +197,9 @@ lv_font_t aerospace_22 = {
     .line_height = 22, .base_line = 4,
     .subpx = 0, .underline_position = -1, .underline_thickness = 0,
     .dsc = &font_dsc_aerospace_22,
-#if LV_VERSION_CHECK(8, 2, 0)
-    .fallback = NULL, .user_data = NULL,
+#if LV_VERSION_CHECK(8, 2, 0) || LVGL_VERSION_MAJOR >= 9
+    .fallback = NULL,
+    .user_data = NULL,
 #endif
 };
 

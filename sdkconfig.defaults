@@ -38,9 +38,8 @@ CONFIG_LV_USE_BUILTIN_MALLOC=n
 CONFIG_LV_USE_CLIB_MALLOC=y
 # 1 kHz tick + 8 ms refresh for smooth animation (default 100 Hz is too coarse).
 CONFIG_FREERTOS_HZ=1000
-CONFIG_LV_DEF_REFR_PERIOD=8
+CONFIG_LV_DEF_REFR_PERIOD=5
 
-# ── BENCH MODE: ON ───────────────────────────────────────────────────────────
-# Standalone demo sweep — runs with NOTHING wired (no center/ECU/UART).
-# Flip to =n (or toggle in menuconfig → TrackCluster) for normal operation.
+# ── BENCH MODE: OFF (car / UART from center) ─────────────────────────────────
+# Set =y for standalone desk sweep — no center/ECU/UART; display filters disabled.
 # CONFIG_TC_BENCH_MODE is not set

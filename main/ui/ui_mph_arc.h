@@ -3,3 +3,4 @@
 #include "dash_data.h"
 void ui_mph_arc_create(lv_obj_t *parent);
 void ui_mph_arc_update(const dash_data_t *d);
+void ui_mph_arc_raise_text(void);

@@ -125,7 +125,7 @@ bool dash_decode_right(const uint8_t in[UART_BRIDGE_FRAME_LEN], dash_data_t *d, 
 #define DASH_RPM_REV_LIMIT           7500.0f
 
 /* Oil */
-#define DASH_OIL_TEMP_REDLINE        215.0f
+#define DASH_OIL_TEMP_REDLINE        250.0f
 #define DASH_OIL_TEMP_MAX            250.0f
 #define DASH_OIL_PRESS_MIN           25.0f
 #define DASH_OIL_PRESS_MIN_RPM       2000.0f
@@ -166,8 +166,8 @@ bool dash_decode_right(const uint8_t in[UART_BRIDGE_FRAME_LEN], dash_data_t *d, 
 #define DASH_IGN_GREEN_MAX           32.0f
 
 /* Fuel level */
-#define DASH_FUEL_LOW                15.0f
-#define DASH_FUEL_CAUTION            30.0f
+#define DASH_FUEL_LOW                20.0f
+#define DASH_FUEL_CAUTION            50.0f
 
 /* UART staleness (side displays) */
 #define DASH_STALE_MS                500u

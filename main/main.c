@@ -22,32 +22,11 @@ static const char *TAG = "main";
 extern void uart_rx_task(void *arg);
 extern void alarm_task(void *arg);
 
-#if CONFIG_TC_BENCH_MODE
-extern portMUX_TYPE g_dash_mux;
-/* Bench mode: no center/ECU connected. Slowly sweep this cluster's channels so
- * every widget + color can be verified standalone. Toggle OFF for real data. */
-static void bench_task(void *arg)
-{
-    float p = 0.0f;
-    for (;;) {
-        p += 0.01f; if (p > 1.0f) p = 0.0f;
-        portENTER_CRITICAL(&g_dash_mux);
-        g_dash.mph            = p * 160.0f;
-        g_dash.oil_temp       = 100.0f + p * 160.0f;
-        g_dash.oil_press      = 40.0f + p * 90.0f;
-        g_dash.fuel_press     = 20.0f + p * 100.0f;
-        g_dash.fuel_level     = p * 100.0f;
-        g_dash.last_update_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        portEXIT_CRITICAL(&g_dash_mux);
-        vTaskDelay(pdMS_TO_TICKS(60));
-    }
-}
-#endif
-
 void app_main(void)
 {
     ESP_LOGI(TAG, "TrackCluster Left — booting");
 
+    bsp_backlight_hold_off();
     ESP_ERROR_CHECK(bsp_init());
     lv_disp_t *disp = bsp_display_start();
     if (!disp) {
@@ -60,8 +39,7 @@ void app_main(void)
     bsp_lvgl_unlock();
 
 #if CONFIG_TC_BENCH_MODE
-    ESP_LOGW(TAG, "BENCH MODE — demo sweep, UART RX disabled");
-    xTaskCreatePinnedToCore(bench_task, "bench", 4096, NULL, 7, NULL, 0);
+    ESP_LOGW(TAG, "BENCH MODE — paint-sync ping-pong sim, UART RX off");
 #else
     xTaskCreatePinnedToCore(uart_rx_task, "uart_rx", 4096, NULL, 7, NULL, 0);
 #endif

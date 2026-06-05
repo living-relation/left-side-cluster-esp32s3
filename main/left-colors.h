@@ -8,6 +8,7 @@
 #define LEFT_COLORS_H
 
 #include "lvgl.h"
+#include "dash_data.h"
 
 /* ── Backgrounds ───────────────────────────────────────────────────────── */
 #define COLOR_BG_PRIMARY      lv_color_hex(0x000000)
@@ -117,8 +118,8 @@ static inline lv_color_t ign_color(float deg) {
 
 /* ── Fuel-level ramp ───────────────────────────────────────────────────── */
 static inline lv_color_t fuel_color(float pct) {
-    if (pct < 15.0f) return COLOR_RED_HOT;
-    if (pct < 30.0f) return COLOR_ORANGE;
+    if (pct < DASH_FUEL_LOW) return COLOR_RED_HOT;
+    if (pct < DASH_FUEL_CAUTION) return COLOR_ORANGE;
     return COLOR_CYAN;
 }
 
