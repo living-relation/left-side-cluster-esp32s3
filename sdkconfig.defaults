@@ -43,4 +43,4 @@ CONFIG_LV_DEF_REFR_PERIOD=8
 # ── BENCH MODE: ON ───────────────────────────────────────────────────────────
 # Standalone demo sweep — runs with NOTHING wired (no center/ECU/UART).
 # Flip to =n (or toggle in menuconfig → TrackCluster) for normal operation.
-CONFIG_TC_BENCH_MODE=y
+# CONFIG_TC_BENCH_MODE is not set
