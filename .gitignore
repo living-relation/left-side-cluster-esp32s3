@@ -2,4 +2,5 @@
 /managed_components/
 /components/
 .vscode/settings.json
+.cursor/
 debug-d58ccd*

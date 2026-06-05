@@ -27,6 +27,12 @@ Short version:
 Ships in **BENCH MODE** — runs a self-test demo with nothing wired up so you can confirm the screen
 works standalone. Turn off later via *menuconfig → TrackCluster → Bench mode*.
 
+### Bench demo video
+
+Recording of bench mode on this cluster (boot splash, then gauge sweep — no UART required):
+
+**[`docs/demos/Left_demo.mp4`](docs/demos/Left_demo.mp4)** — open locally after clone, or preview on GitHub by clicking the file.
+
 ### Key settings (already in `sdkconfig.defaults`)
 | Setting | Value |
 |---|---|
