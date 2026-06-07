@@ -24,8 +24,11 @@ Short version:
 4. Plug the board in via USB-C and pick the **COM port** on the bottom bar.
 5. **Build → Flash → Monitor** (flame icon).
 
-Ships in **BENCH MODE** — runs a self-test demo with nothing wired up so you can confirm the screen
-works standalone. Turn off later via *menuconfig → TrackCluster → Bench mode*.
+Ships with **bench mode OFF** (live UART from center). For a standalone bench sweep, turn on via
+*menuconfig → TrackCluster → Bench mode* and reflash. Morning flash steps: **`FLASH_READINESS.md`**.
+
+**Already flashed?** Wiring **5 V**, **GND**, and **GPIO44 ← center GPIO20** does not require another
+flash unless you pull new firmware from git.
 
 ### Bench demo video
 
@@ -41,7 +44,7 @@ Recording of bench mode on this cluster (boot splash, then gauge sweep — no UA
 | Target | esp32s3 |
 | Flash size | 16 MB (confirm; set 8 MB if your board is smaller) |
 | PSRAM | Octal, 80 MHz (**required** — the framebuffer lives here) |
-| Bench mode | ON (self-test) |
+| Bench mode | OFF (live) |
 | ESP-IDF | 5.4.2 (matches the center board's toolchain) |
 
 No baud rate to set — see the setup guide.

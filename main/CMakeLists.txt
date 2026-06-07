@@ -1,3 +1,5 @@
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/esp_lvgl_port_iram_patch.cmake)
+
 idf_component_register(
     SRCS
         "main.c"
