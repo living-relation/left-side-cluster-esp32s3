@@ -27,6 +27,9 @@ void bsp_backlight_hold_off(void);
 /** Enable backlight after the first black LVGL frame (call from ui_init). */
 void bsp_backlight_on(void);
 
+/** Set backlight brightness, percent (clamped to [15,100]; 100 = brightest). */
+void bsp_backlight_set_percent(uint8_t pct);
+
 esp_err_t  bsp_init(void);
 lv_disp_t *bsp_display_start(void);
 bool        bsp_lvgl_lock(uint32_t timeout_ms);

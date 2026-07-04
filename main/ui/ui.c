@@ -102,6 +102,15 @@ void ui_paint_tick(lv_timer_t *t)
     snap = *(const dash_data_t *)&g_dash;
     portEXIT_CRITICAL(&g_dash_mux);
 
+    /* Sentinel (0xFF is impossible for a 0-100 value) so the first live tick
+     * always applies whatever brightness is in g_dash, independent of the
+     * startup default seeded elsewhere. */
+    static uint8_t s_last_brightness = 0xFF;
+    if (snap.brightness != s_last_brightness) {
+        s_last_brightness = snap.brightness;
+        bsp_backlight_set_percent(snap.brightness);
+    }
+
     ui_mph_arc_update(&snap);
     ui_mini_arcs_update(&snap);
 }
