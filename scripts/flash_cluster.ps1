@@ -23,8 +23,14 @@ if (-not $SkipBuild) {
 }
 
 Write-Host "Flashing left_cluster to $Port ..."
+# Relax -ErrorAction Stop around the native call: esptool/idf.py write progress
+# and warnings to stderr, which "2>&1" would otherwise turn into a terminating
+# error on Windows PowerShell 5.1. Gate on the real exit code instead.
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 & $py $idfPy "-p$Port" flash 2>&1 | Tee-Object -FilePath (Join-Path $logDir "flash_$Port.log")
-if ($LASTEXITCODE -ne 0) { throw "idf.py flash failed: $LASTEXITCODE" }
+$flashExit = $LASTEXITCODE
+$ErrorActionPreference = $eap
+if ($flashExit -ne 0) { throw "idf.py flash failed: $flashExit" }
 
 Write-Host "PASS - left cluster flashed to $Port"
 if ($Monitor) {

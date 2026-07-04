@@ -22,10 +22,17 @@ if ($FullClean) {
 & (Join-Path $PSScriptRoot "patch_esp_lvgl_port_iram.ps1")
 
 $logFile = Join-Path $logDir "prepare_flash.log"
+# idf.py/cmake write warnings to stderr; with the "*>" redirect under
+# -ErrorAction Stop (Windows PowerShell 5.1) that stderr would surface as a
+# terminating error. Relax to Continue for the native call and gate on the
+# real process exit code instead.
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 & $py $idfPy build *> $logFile
-if ($LASTEXITCODE -ne 0) {
+$buildExit = $LASTEXITCODE
+$ErrorActionPreference = $eap
+if ($buildExit -ne 0) {
     Get-Content $logFile -Tail 30
-    throw "idf.py build failed: $LASTEXITCODE"
+    throw "idf.py build failed: $buildExit"
 }
 
 & (Join-Path $PSScriptRoot "verify_build_no_flash.ps1") -SkipBuild
