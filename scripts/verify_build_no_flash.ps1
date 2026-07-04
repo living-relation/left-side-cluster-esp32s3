@@ -31,8 +31,13 @@ if ($SkipBuild) {
 . (Join-Path $PSScriptRoot "idf_env_workspace.ps1")
 $py = Join-Path $env:IDF_PYTHON_ENV_PATH "Scripts\python.exe"
 $idfPy = Join-Path $env:IDF_PATH "tools\idf.py"
+# Relax -ErrorAction Stop around the native call so cmake stderr warnings are not
+# promoted to a terminating error on Windows PowerShell 5.1; gate on exit code.
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 & $py $idfPy reconfigure build
-if ($LASTEXITCODE -ne 0) { throw "idf.py build failed with exit $LASTEXITCODE" }
+$buildExit = $LASTEXITCODE
+$ErrorActionPreference = $eap
+if ($buildExit -ne 0) { throw "idf.py build failed with exit $buildExit" }
 
 $CmakeConfig = Join-Path $ProjectRoot "build\config\sdkconfig.cmake"
 if (-not (Test-Path $CmakeConfig)) { throw "Missing $CmakeConfig after build" }

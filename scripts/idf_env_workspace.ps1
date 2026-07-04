@@ -26,7 +26,11 @@ function Test-TcIdfReady {
 function Import-TcActivation {
     param([string]$Script)
     if ($Script -and (Test-Path $Script)) {
-        . $Script *> $null
+        # Tolerate a corrupt/partial install: on failure report it and return
+        # false so the caller falls through to the next candidate / fallback
+        # instead of aborting the whole environment setup.
+        try { . $Script *> $null }
+        catch { Write-Warning "ESP-IDF activation failed ($Script): $($_.Exception.Message)"; return $false }
         return $true
     }
     return $false
@@ -53,13 +57,20 @@ foreach ($eim in $eimCandidates) {
     $installs = @($reg.idfInstalled) | Where-Object { $_ -and $_.path }
     if (-not $installs) { continue }
 
+    # Sort by parsed [version] so e.g. v5.4.10 ranks above v5.4.2 (a plain
+    # lexical name sort would order those backwards).
+    $verKey = {
+        $n = ($_.name -replace '^[vV]', '') -replace '[^0-9.].*$', ''
+        if (-not $n) { $n = '0.0' }
+        try { [version]$n } catch { [version]'0.0' }
+    }
     # Priority: selected id -> newest v5.4.x -> newest of anything, de-duped.
     $seen = New-Object 'System.Collections.Generic.HashSet[string]'
     $ordered = New-Object 'System.Collections.Generic.List[object]'
     foreach ($cand in @(
         ($installs | Where-Object { $_.id -eq $reg.idfSelectedId } | Select-Object -First 1)
-        ($installs | Where-Object { $_.name -like 'v5.4*' } | Sort-Object name -Descending)
-        ($installs | Sort-Object name -Descending)
+        ($installs | Where-Object { $_.name -like 'v5.4*' } | Sort-Object $verKey -Descending)
+        ($installs | Sort-Object $verKey -Descending)
     )) {
         foreach ($i in @($cand)) {
             if (-not $i) { continue }
