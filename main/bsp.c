@@ -170,7 +170,9 @@ static esp_err_t backlight_pwm_init(void)
 
 void bsp_backlight_set_percent(uint8_t pct)
 {
-    if (backlight_pwm_init() != ESP_OK) {
+    esp_err_t err = backlight_pwm_init();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "backlight PWM init failed: %s", esp_err_to_name(err));
         return;
     }
     if (pct < 15)  pct = 15;    /* >=15% floor backstop — never fully black */
@@ -178,8 +180,14 @@ void bsp_backlight_set_percent(uint8_t pct)
     /* LEDC channel is non-inverted (no output_invert): higher duty = brighter,
      * so 100% -> BSP_BL_DUTY_MAX = brightest. */
     uint32_t duty = (BSP_BL_DUTY_MAX * pct) / 100u;
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, BSP_BL_LEDC_CH, duty);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, BSP_BL_LEDC_CH);
+    err = ledc_set_duty(LEDC_LOW_SPEED_MODE, BSP_BL_LEDC_CH, duty);
+    if (err == ESP_OK) {
+        err = ledc_update_duty(LEDC_LOW_SPEED_MODE, BSP_BL_LEDC_CH);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "backlight duty update failed: %s", esp_err_to_name(err));
+        return;
+    }
     ESP_LOGI(TAG, "Backlight %u%% (LEDC duty=%lu)", pct, (unsigned long)duty);
 }
 
