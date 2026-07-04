@@ -83,6 +83,11 @@ typedef struct {
      * The right display renders a popup overlay when menu_id != 0. */
     uint8_t  menu_id;      /* 0=hidden, 1=BOOST MAP, 2=TC SLIP ANGLE */
     uint8_t  menu_cursor;  /* currently highlighted item index (0-based) */
+
+    /* Night-dimming backlight — FINAL effective brightness computed by center
+     * (headlight state, night default, and floor already applied). 0-100 %.
+     * Broadcast in BOTH the LEFT and RIGHT UART frames at wire offset 28. */
+    uint8_t  brightness;   /* 100 = full bright (day); lower = dimmer */
 } dash_data_t;
 
 /* Global snapshot. Mutated under a critical section in the producer (center). */

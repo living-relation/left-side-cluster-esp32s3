@@ -168,20 +168,19 @@ static esp_err_t backlight_pwm_init(void)
     return ESP_OK;
 }
 
-static esp_err_t backlight_set_percent(uint8_t percent)
+void bsp_backlight_set_percent(uint8_t pct)
 {
-    ESP_RETURN_ON_ERROR(backlight_pwm_init(), TAG, "bl_pwm");
-
-    if (percent > 100) {
-        percent = 100;
+    if (backlight_pwm_init() != ESP_OK) {
+        return;
     }
-    uint32_t duty = (BSP_BL_DUTY_MAX * percent) / 100u;
-    ESP_RETURN_ON_ERROR(
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, BSP_BL_LEDC_CH, duty), TAG, "bl_duty");
-    ESP_RETURN_ON_ERROR(
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, BSP_BL_LEDC_CH), TAG, "bl_update");
-    ESP_LOGI(TAG, "Backlight %u%% (LEDC duty=%lu)", percent, (unsigned long)duty);
-    return ESP_OK;
+    if (pct < 15)  pct = 15;    /* >=15% floor backstop — never fully black */
+    if (pct > 100) pct = 100;
+    /* LEDC channel is non-inverted (no output_invert): higher duty = brighter,
+     * so 100% -> BSP_BL_DUTY_MAX = brightest. */
+    uint32_t duty = (BSP_BL_DUTY_MAX * pct) / 100u;
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, BSP_BL_LEDC_CH, duty);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, BSP_BL_LEDC_CH);
+    ESP_LOGI(TAG, "Backlight %u%% (LEDC duty=%lu)", pct, (unsigned long)duty);
 }
 
 static void panel_framebuffer_black(void)
@@ -206,9 +205,9 @@ static void panel_framebuffer_black(void)
     memset(fb0, 0, fb_bytes);
 }
 
-void bsp_backlight_on(void)
+void bsp_backlight_on(void)   /* startup default until first frame arrives */
 {
-    ESP_ERROR_CHECK(backlight_set_percent(80));
+    bsp_backlight_set_percent(100);
 }
 
 #define ST7701_DATA(...) ((const uint8_t[]){__VA_ARGS__}), sizeof((const uint8_t[]){__VA_ARGS__})

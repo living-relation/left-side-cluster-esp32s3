@@ -106,6 +106,7 @@ void uart_rx_task(void *arg)
         g_dash.trip_a      = snap.trip_a;
         g_dash.trip_b      = snap.trip_b;
         g_dash.flags       = snap.flags;
+        g_dash.brightness  = snap.brightness;
         g_dash.last_update_ms =
             (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         portEXIT_CRITICAL(&g_dash_mux);

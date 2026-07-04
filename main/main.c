@@ -26,6 +26,8 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "TrackCluster Left — booting");
 
+    g_dash.brightness = 100;   /* full bright until first UART frame sets it */
+
     bsp_backlight_hold_off();
     ESP_ERROR_CHECK(bsp_init());
     lv_disp_t *disp = bsp_display_start();
