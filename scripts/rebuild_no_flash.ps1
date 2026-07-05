@@ -26,8 +26,15 @@ if (Test-Path $LvglBuild) {
 
 $py = "$env:IDF_PYTHON_ENV_PATH\Scripts\python.exe"
 $idfPy = "$env:IDF_PATH\tools\idf.py"
+New-Item -ItemType Directory -Force -Path (Join-Path $ProjectRoot "build\log") | Out-Null
+# Relax -ErrorAction Stop around the native call: cmake/idf.py stderr warnings
+# would otherwise become a terminating error on Windows PowerShell 5.1 when
+# merged via "2>&1". Gate on the real exit code instead.
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 & $py $idfPy build 2>&1 | Tee-Object -FilePath (Join-Path $ProjectRoot "build\log\rebuild_no_flash.log")
-if ($LASTEXITCODE -ne 0) { throw "idf.py build failed with exit $LASTEXITCODE" }
+$buildExit = $LASTEXITCODE
+$ErrorActionPreference = $eap
+if ($buildExit -ne 0) { throw "idf.py build failed with exit $buildExit" }
 
 & (Join-Path $PSScriptRoot "verify_build_no_flash.ps1") -SkipBuild
 $CmakeConfig = Join-Path $ProjectRoot "build\config\sdkconfig.cmake"

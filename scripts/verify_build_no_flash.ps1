@@ -27,51 +27,17 @@ if ($SkipBuild) {
     exit 0
 }
 
-$exportCandidates = @(
-    "$env:IDF_PATH\export.ps1",
-    "C:\esp\v5.4.2\esp-idf\export.ps1",
-    "$env:USERPROFILE\esp\v5.4.2\esp-idf\export.ps1"
-)
-$exported = $false
-$LocalIdfTools = Join-Path $ProjectRoot "tools\espidf"
-if (Test-Path (Join-Path $LocalIdfTools "espidf.constraints.v5.4.txt")) {
-    $env:IDF_TOOLS_PATH = $LocalIdfTools
-} elseif (-not $env:IDF_TOOLS_PATH -and (Test-Path "C:\Espressif\tools")) {
-    $env:IDF_TOOLS_PATH = "C:\Espressif"
-}
-if (-not $env:IDF_PYTHON_ENV_PATH) {
-    $pyCandidates = @(
-        "C:\Espressif\tools\python\v5.4.2\venv",
-        "C:\Espressif\python_env\idf5.4_py3.13_env"
-    )
-    foreach ($py in $pyCandidates) {
-        if (Test-Path "$py\Scripts\python.exe") { $env:IDF_PYTHON_ENV_PATH = $py; break }
-    }
-}
-foreach ($p in $exportCandidates) {
-    if ($p -and (Test-Path $p)) {
-        Write-Host "Using ESP-IDF export: $p"
-        . $p
-        $exported = $true
-        break
-    }
-}
-if (-not $exported) {
-    if (-not $env:IDF_PATH) { $env:IDF_PATH = "C:\esp\v5.4.2\esp-idf" }
-    if (-not (Test-Path "$env:IDF_PATH\tools\idf.py")) {
-        throw "ESP-IDF not found. Install 5.4.x or set IDF_PATH."
-    }
-    $idfPy = "$env:IDF_PATH\tools\idf.py"
-    $py = "$env:IDF_PYTHON_ENV_PATH\Scripts\python.exe"
-    if (-not (Test-Path $py)) { throw "IDF Python env missing at $env:IDF_PYTHON_ENV_PATH" }
-    if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
-        throw "cmake not on PATH. Use the ESP-IDF PowerShell / VS Code terminal, or run -SkipBuild."
-    }
-    & $py $idfPy reconfigure build
-} else {
-    idf.py reconfigure build
-}
-if ($LASTEXITCODE -ne 0) { throw "idf.py build failed with exit $LASTEXITCODE" }
+# Auto-discover the ESP-IDF toolchain (see idf_env_workspace.ps1).
+. (Join-Path $PSScriptRoot "idf_env_workspace.ps1")
+$py = Join-Path $env:IDF_PYTHON_ENV_PATH "Scripts\python.exe"
+$idfPy = Join-Path $env:IDF_PATH "tools\idf.py"
+# Relax -ErrorAction Stop around the native call so cmake stderr warnings are not
+# promoted to a terminating error on Windows PowerShell 5.1; gate on exit code.
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+& $py $idfPy reconfigure build
+$buildExit = $LASTEXITCODE
+$ErrorActionPreference = $eap
+if ($buildExit -ne 0) { throw "idf.py build failed with exit $buildExit" }
 
 $CmakeConfig = Join-Path $ProjectRoot "build\config\sdkconfig.cmake"
 if (-not (Test-Path $CmakeConfig)) { throw "Missing $CmakeConfig after build" }
