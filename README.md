@@ -1,4 +1,5 @@
 # TrackCluster — Left Cluster (ESP32-S3)
+<!-- Revised 2026-09-27 · docs/center-tx-sot-ref · Cowork: center TX pin replaced with pointer to center PINOUT.md · PR# n/a -->
 
 Firmware for the **left** instrument-cluster display: a 480×480 round ST7701S panel on a
 **Waveshare ESP32-S3-Touch-LCD-2.8C**. Shows the **speedometer** plus four mini-gauges (oil temp,
@@ -27,7 +28,7 @@ Short version:
 Ships with **bench mode OFF** (live UART from center). For a standalone bench sweep, turn on via
 *menuconfig → TrackCluster → Bench mode* and reflash. Morning flash steps: **`FLASH_READINESS.md`**.
 
-**Already flashed?** Wiring **5 V**, **GND**, and **GPIO44 ← center GPIO20** does not require another
+**Already flashed?** Wiring **5 V**, **GND**, and **GPIO44 (this board's UART RX) ← center UART TX** does not require another
 flash unless you pull new firmware from git.
 
 ### Bench demo video
@@ -59,7 +60,8 @@ Powered from the same 12 V→5 V buck as the others; one data wire from the cent
 |---|---|
 | **5V** | buck converter 5 V output |
 | **GND** | common ground (shared with center + buck) |
-| **GPIO44 (UART RX)** | center cluster **UART1 TX = GPIO20** |
+| **GPIO44 (UART RX)** | center cluster UART TX (pin: center `PINOUT.md`) |
+<!-- SOT-REF: repo=living-relation/center-cluster-esp32-p4 path=PINOUT.md anchor=Wired connections summary -->
 
 That single UART wire (+ common ground) is all the data this screen needs. The **full harness
 diagram** (power, CAN, both side links, buttons/encoders) lives in the center repo’s `WIRING.md`.
