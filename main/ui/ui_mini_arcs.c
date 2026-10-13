@@ -478,7 +478,7 @@ static void update_arc(int idx, float value, float min, float max,
 {
     float pct = mini_arc_fill_pct(idx, value, min, max);
 
-    int ival = (label_pct >= 0) ? label_pct : (int)value;
+    int ival = (label_pct >= 0) ? label_pct : (int)lroundf(value);
 #if CONFIG_TC_BENCH_MODE
     /* Bench: full canvas only when lit segment changes (digits still every +1). */
     int lit = (int)(pct * (float)N_SEGS);
