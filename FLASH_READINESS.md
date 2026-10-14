@@ -1,7 +1,7 @@
 # Left cluster — flash readiness
 <!-- Revised 2026-09-27 · docs/center-tx-sot-ref · Cowork: center TX pin replaced with pointer to center PINOUT.md · PR# n/a -->
 
-**Source tree (flash from here):** `C:\projects\left-side-cluster-esp32s3`  
+**Source tree (flash from here):** `C:\projects\active\left-side-cluster-esp32s3`  
 **Git HEAD:** run `git rev-parse --short HEAD` after pull  
 **Mode:** bench **OFF** — live UART from center (`# CONFIG_TC_BENCH_MODE is not set`)
 
@@ -16,7 +16,7 @@ Nothing else needs to be connected. Plug **only** the left cluster via USB-C.
 3. **Target** — `esp32s3`
 4. **Build + verify (no flash):**
    ```powershell
-   cd C:\projects\left-side-cluster-esp32s3
+   cd C:\projects\active\left-side-cluster-esp32s3
    .\scripts\prepare_flash.ps1
    ```
    After `fullclean`, this re-applies the **esp_lvgl_port IRAM_ATTR** patch automatically.
